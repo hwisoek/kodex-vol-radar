@@ -40,7 +40,7 @@ TICKER_MAP = {
         "symbol": "069500.KS",
         "currency": "원",
         "is_kr": True,
-        "offset": 0.0,
+        "trading_hours": 6.5,
         "tz": "Asia/Seoul",
         "market_name": "한국거래소 (KRX)",
         "naver_symbol": "069500"
@@ -49,7 +49,7 @@ TICKER_MAP = {
         "symbol": "SPY",
         "currency": "$",
         "is_kr": False,
-        "offset": 1.65,
+        "trading_hours": 6.5,
         "tz": "America/New_York",
         "market_name": "미국 NYSE"
     },
@@ -57,7 +57,7 @@ TICKER_MAP = {
         "symbol": "QQQ",
         "currency": "$",
         "is_kr": False,
-        "offset": 1.40,
+        "trading_hours": 6.5,
         "tz": "America/New_York",
         "market_name": "미국 NASDAQ"
     },
@@ -65,7 +65,7 @@ TICKER_MAP = {
         "symbol": "SOXX",
         "currency": "$",
         "is_kr": False,
-        "offset": 1.05,
+        "trading_hours": 6.5,
         "tz": "America/New_York",
         "market_name": "미국 NASDAQ"
     },
@@ -73,7 +73,7 @@ TICKER_MAP = {
         "symbol": "GLD",
         "currency": "$",
         "is_kr": False,
-        "offset": 1.85,
+        "trading_hours": 6.5,
         "tz": "America/New_York",
         "market_name": "미국 NYSE Arca"
     },
@@ -81,7 +81,7 @@ TICKER_MAP = {
         "symbol": "SLV",
         "currency": "$",
         "is_kr": False,
-        "offset": 1.35,
+        "trading_hours": 6.5,
         "tz": "America/New_York",
         "market_name": "미국 NYSE Arca"
     }
@@ -93,7 +93,6 @@ selected_name = st.sidebar.selectbox(
 )
 
 target_info = TICKER_MAP[selected_name]
-
 SYMBOL = str(target_info["symbol"])
 CURRENCY = str(target_info["currency"])
 
@@ -297,16 +296,15 @@ def fetch_recent_5m_candles(symbol: str, is_kr: bool, naver_symbol: str = ""):
 # ==============================================================================
 
 def get_detailed_trading_strategy(risk_score, channel_pos, rr_ratio, is_whipsaw_risk, trend_intensity):
-    # 수정: 실제 trend_intensity 기반으로 트렌드 판별
     is_strong_trend_up = trend_intensity > 0.3
     is_strong_trend_down = trend_intensity < -0.3
 
     if risk_score >= 85.0:
         if is_whipsaw_risk:
             if channel_pos > 70.0:
-                return "🔥 [전략 01] 불꽃놀이 피크아웃 역추세 스캘핑", "#dc2626", "극단적 과열 상태에서 휩소 징후가 포착되었습니다. 상단 돌파 시 추격 매수를 금지하고 1분봉상 음봉 확인 후 단타 숏 관점으로 대응하세요.", "🚨 초고위험 (피크아웃)", "inverse"
+                return "🔥 [전략 01] 불꽃놀이 피크아웃 역추세 스캘핑", "#dc2626", "극단적 과열 상태에서 휩소 징후가 포착되었습니다. 상단 돌파 시 추격 매수를 금지하고 단타 숏 관점으로 대응하세요.", "🚨 초고위험 (피크아웃)", "inverse"
             elif channel_pos < 30.0:
-                return "💥 [전략 02] 패닉셀 투매 낙주 투입", "#dc2626", "극단적 패닉셀 투매 국면입니다. 손절선 이탈 시 일시적 반등을 노린 분할 매수만 유효하며, 즉시 칼손절이 필수입니다.", "🚨 초고위험 (낙주)", "inverse"
+                return "💥 [전략 02] 패닉셀 투매 낙주 투입", "#dc2626", "극단적 패닉셀 투매 국면입니다. 손절선 이탈 시 일시적 반등을 노린 분할 매수만 유효하며 즉시 칼손절이 필수입니다.", "🚨 초고위험 (낙주)", "inverse"
             else:
                 return "🌪️ [전략 03] 초고변동 진공 휩소 회피 (포지션 청산)", "#b91c1c", "호가 갭이 벌어지고 상하 변동폭이 극에 달했습니다. 슬리피지 비용을 고려해 신규 진입을 전면 중단하세요.", "🚨 극위험 (관망)", "inverse"
         else:
@@ -315,7 +313,7 @@ def get_detailed_trading_strategy(risk_score, channel_pos, rr_ratio, is_whipsaw_
             elif channel_pos <= 50.0 and is_strong_trend_down:
                 return "⚡ [전략 05] 지지선 붕괴 하방 모멘텀 숏/손절 가속", "#ef4444", "하방 변동성 폭발로 주요 지지 라인이 뚫리는 국면입니다. 롱 포지션은 청산하세요.", "🚨 고위험 (하방돌파)", "inverse"
             else:
-                return "🎯 [전략 06] 1σ 밴드 외곽 상하단 볼린저 터치 스캘핑", "#f97316", "방향성은 중립이나 진폭이 매우 큽니다. 상단선 도달 시 매도, 하단선 도달 시 매수하되 홀딩을 짧게 가져가세요.", "🚨 고위험 (밴드터치)", "inverse"
+                return "🎯 [전략 06] 1σ 밴드 외곽 상하단 볼린저 터치 스캘핑", "#f97316", "방향성은 중립이나 진폭이 큽니다. 상단선 도달 시 매도, 하단선 도달 시 매수하되 홀딩을 짧게 가져가세요.", "🚨 고위험 (밴드터치)", "inverse"
 
     elif risk_score >= 65.0:
         if is_whipsaw_risk:
@@ -325,43 +323,43 @@ def get_detailed_trading_strategy(risk_score, channel_pos, rr_ratio, is_whipsaw_
                 return "🛑 [전략 08] 가짜 돌파(Fakeout) 트랩 매도 대응", "#ea580c", "전고점을 뚫는 척하다 내려앉는 불트랩 확률이 높습니다. 저항선 부근에서 물량을 정리하세요.", "⚖️ 주의 (트랩위험)", "inverse"
         else:
             if channel_pos >= 60.0:
-                return "🌊 [전략 09] 5선/10선 이동평균선 이탈 방어 매매", "#0284c7", "상승 추세가 단단하게 유지되고 있습니다. 이평선 지지를 확인하며 눌림목마다 분할 매수하세요.", "🔥 고변동 추세", "normal"
+                return "🌊 [전략 09] 이동평균선 이탈 방어 매매", "#0284c7", "상승 추세가 단단하게 유지되고 있습니다. 이평선 지지를 확인하며 눌림목마다 분할 매수하세요.", "🔥 고변동 추세", "normal"
             elif channel_pos <= 40.0:
-                return "🛡️ [전략 10] 채널 하단 지지 확인 V자 반등 공략", "#0284c7", "안정적인 추세 파동 속 일시적 하단 터치입니다. 지지선 체결 누적 확인 후 V자 반등을 노리세요.", "🔥 매수 우위", "normal"
+                return "🛡️ [전략 10] 채널 하단 지지 확인 V자 반등 공략", "#0284c7", "안정적인 추세 파동 속 일시적 하단 터치입니다. 지지선 체결 누적 확인 후 반등을 노리세요.", "🔥 매수 우위", "normal"
             else:
                 return "🧭 [전략 11] 중심선 돌파 추세 강화 포지션 홀딩", "#0ea5e9", "채널 중간값에서 상방으로 방향을 틀기 시작했습니다. 추세 추종 관점 홀딩이 유효합니다.", "🔥 추세 지속", "normal"
 
     elif risk_score >= 40.0:
         if is_whipsaw_risk:
             if channel_pos > 50.0:
-                return "🔄 [전략 12] 박스 상단 수렴 후 페이크 역지정 매매", "#0284c7", "중변동 구간에서 비틀림이 감지되었습니다. 상단선 아래에 익절을 걸고 본절 로스컷을 타이트하게 잡으세요.", "⚖️ 보통 (비틀림)", "normal"
+                return "🔄 [전략 12] 박스 상단 수렴 후 페이크 역지정 매매", "#0284c7", "중변동 구간에서 비틀림이 감지되었습니다. 상단선 아래에 익절을 걸고 로스컷을 타이트하게 잡으세요.", "⚖️ 보통 (비틀림)", "normal"
             else:
-                return "🎣 [전략 13] 스토캐스틱/RSI 과매도 기반 쌍바닥 매수", "#0284c7", "하단선 지지 후 2차 저점 확인(쌍바닥) 구간입니다. 분할 2회로 나누어 진입하세요.", "⚖️ 보통 (눌림목)", "normal"
+                return "🎣 [전략 13] 과매도 기반 쌍바닥 매수", "#0284c7", "하단선 지지 후 2차 저점 확인(쌍바닥) 구간입니다. 분할 2회로 나누어 진입하세요.", "⚖️ 보통 (눌림목)", "normal"
         else:
             if rr_ratio >= 1.25:
-                return "💎 [전략 14] 황금 손익비 채널 하단 스윙 바잉", "#0ea5e9", "손절폭은 극히 짧고 기대 수익폭은 큽니다. 리스크 대비 수익 효율이 가장 높은 최적의 진입 타점입니다.", "✅ 적극 매수", "normal"
+                return "💎 [전략 14] 황금 손익비 채널 하단 스윙 바잉", "#0ea5e9", "손절폭은 극히 짧고 기대 수익폭은 큽니다. 리스크 대비 수익 효율이 가장 높은 진입 타점입니다.", "✅ 적극 매수", "normal"
             elif rr_ratio <= 0.8:
-                return "⚠️ [전략 15] 손익비 열위 구간 진입 보류 및 분할 익절", "#64748b", "상단 목표가에 근접하여 추가 상승 룸 대비 하방 리스크가 큽니다. 보유 물량을 현금화하세요.", "⚖️ 보통 (익절우선)", "normal"
+                return "⚠️ [전략 15] 손익비 열위 구간 진입 보류 및 분할 익절", "#64748b", "상단 목표가에 근접하여 추가 상승 폭 대비 하방 리스크가 큽니다. 보유 물량을 현금화하세요.", "⚖️ 보통 (익절우선)", "normal"
             elif 45.0 <= channel_pos <= 55.0:
                 return "⏳ [전략 16] 수렴 구간 브레이크아웃 대기 (방향성 탐색)", "#0ea5e9", "진폭이 압축되는 중간 지대입니다. 이탈 방향이 확인될 때까지 관망하세요.", "⚖️ 중립 (수렴)", "normal"
             else:
-                return "📈 [전략 17] 표준 채널 내 지지/저항 핑퐁 트레이딩", "#0ea5e9", "규칙적인 파동을 그리는 전형적인 장세입니다. 하단 30% 매수, 상단 70% 매도 규칙을 적용하세요.", "⚖️ 보통 (채널)", "normal"
+                return "📈 [전략 17] 표준 채널 내 지지/저항 핑퐁 트레이딩", "#0ea5e9", "규칙적인 파동을 그리는 장세입니다. 하단 30% 매수, 상단 70% 매도 규칙을 적용하세요.", "⚖️ 보통 (채널)", "normal"
 
     elif risk_score >= 20.0:
         if channel_pos >= 75.0:
-            return "🧱 [전략 18] 박스권 천장 역매매 (숏/비중 축소)", "#10b981", "변동성 에너지가 고갈되어 상단 돌파 에너지가 부족합니다. 천장 부근에서 전량 익절하세요.", "🛡️ 안정 (박스상단)", "normal"
+            return "🧱 [전략 18] 박스권 천장 역매매 (숏/비중 축소)", "#10b981", "변동성 에너지가 소진되어 상단 돌파 에너지가 부족합니다. 천장 부근에서 분할 익절하세요.", "🛡️ 안정 (박스상단)", "normal"
         elif channel_pos <= 25.0:
             return "🧱 [전략 19] 박스권 바닥 물량 모으기 (저점 줍기)", "#10b981", "하방 압력이 약해 바닥을 깰 확률이 낮습니다. 손절 기준선을 엄격히 걸고 지정가 매수가 유효합니다.", "🛡️ 안정 (박스하단)", "normal"
         else:
-            return "💤 [전략 20] 지루한 횡보장 스캘핑 자제 (수수료 주의)", "#10b981", "변동폭이 너무 좁아 잦은 매매 시 수수료로 시드가 잠식됩니다. 매매 횟수를 줄이세요.", "🛡️ 안정 (횡보)", "normal"
+            return "💤 [전략 20] 지루한 횡보장 스캘핑 자제 (수수료 주의)", "#10b981", "변동폭이 좁아 잦은 매매 시 수수료로 시드가 잠식됩니다. 매매 횟수를 줄이세요.", "🛡️ 안정 (횡보)", "normal"
 
     else:
         if is_whipsaw_risk:
-            return "🪤 [전략 21] 개미 털기용 잔파도 노이즈 무시", "#059669", "거래량이 말라붙은 상태에서 생기는 일시적 틱 튐 현상입니다. 뇌동매매를 삼가세요.", "🛡️ 극안정 (노이즈)", "normal"
+            return "🪤 [전략 21] 개미 털기용 잔파도 노이즈 무시", "#059669", "거래량이 마른 상태에서 발생하는 일시적 노이즈입니다. 뇌동매매를 삼가세요.", "🛡️ 극안정 (노이즈)", "normal"
         elif channel_pos > 80.0:
-            return "🔋 [전략 22] 에너지 응축 상방 폭발 직전 대기", "#059669", "장기 횡보 후 상단선에 가격이 밀착되었습니다. 볼린저 밴드 스퀴즈 이후 상방 폭발 가능성을 열어두세요.", "🔋 응축 (상방대기)", "normal"
+            return "🔋 [전략 22] 에너지 응축 상방 폭발 직전 대기", "#059669", "횡보 후 상단선에 가격이 밀착되었습니다. 볼린저 스퀴즈 이후 상방 폭발 가능성을 열어두세요.", "🔋 응축 (상방대기)", "normal"
         elif channel_pos < 20.0:
-            return "⚠️ [전략 23] 저변동성 하방 이탈(계단식 하락) 경계", "#059669", "거래량 없이 질질 흘러내리는 계단식 하락 패턴 위험이 있습니다. 바닥 거래량 폭증을 기다리세요.", "🛡️ 극안정 (하방주의)", "normal"
+            return "⚠️ [전략 23] 저변동성 하방 이탈(계단식 하락) 경계", "#059669", "거래량 없이 서서히 밀리는 계단식 하락 패턴 위험이 있습니다. 바닥 거래량 수반을 확인하세요.", "🛡️ 극안정 (하방주의)", "normal"
         else:
             return "🛑 [전략 24] 에너지 완충 구간 전면 관망 (휴식 권장)", "#059669", "변동성이 최저 수준으로 수렴했습니다. 큰 추세가 분출되기 전 휴식을 취하세요.", "🛡️ 극안정 (관망)", "normal"
 
@@ -402,12 +400,21 @@ try:
         X = np.array(feat_list, dtype=float).reshape(1, -1)
         X_scaled = scaler.transform(X)
 
-        pred_log_rv = float(model.predict(X_scaled)[0])
-        pred_rv = float(np.exp(pred_log_rv))
+        raw_pred_log_rv = float(model.predict(X_scaled)[0])
 
-        offset_val = float(target_info["offset"])
-        adjusted_log_rv = float(pred_log_rv + offset_val)
+        # ----------------------------------------------------------------------
+        # 동적 국소 캘리브레이션 (Dynamic Baseline Offset)
+        # ----------------------------------------------------------------------
+        # 하드코딩 오프셋 대신, 최근 2시간 관측 실현변동성(in_rv)과 모형 기준 역사적 중위수(rv_history median)의
+        # 자산 고유 레벨 차이를 유동적으로 산출하여 정합성을 맞춤.
+        hist_median = float(np.median(rv_history))
+        dynamic_asset_offset = float(np.clip(in_rv - hist_median, -1.5, 1.5))
+        
+        # 모델 예측 변화량과 국소 베이스라인을 결합한 일관 예측치
+        adjusted_log_rv = float(raw_pred_log_rv + (dynamic_asset_offset * 0.4))
+        pred_rv = float(np.exp(adjusted_log_rv))
 
+        # 위험 점수 산출
         raw_score = float(np.mean(rv_history <= adjusted_log_rv) * 100.0)
         risk_score = float(np.clip(raw_score, 0.0, 100.0))
 
@@ -423,14 +430,11 @@ try:
         raw_channel_pos = ((current_price - past_min) / price_spread) * 100.0
         channel_pos = float(np.clip(raw_channel_pos, 0.0, 100.0))
 
-        # ======================================================================
-        # [수정됨] 실질 수익률 기반 모멘텀 동적 측정 (손익비 고정 버그 해결)
-        # ======================================================================
+        # 모멘텀 측정
         recent_return = (current_price - prices[0]) / prices[0]
-        # 단기 변동성 기준 (약 0.5% 변동 시 매우 강한 모멘텀으로 인식하도록 스케일링)
         trend_intensity = float(np.tanh(recent_return / 0.005))
         
-        # 1시간 뒤 기대 드리프트 금액 (방향성에 따라 + 또는 - 값을 가짐)
+        # 1시간 뒤 기대 드리프트 금액
         drift_val = float(expected_range_value * 0.35 * trend_intensity)
 
         expected_upper = float(current_price + drift_val + expected_range_value)
@@ -478,7 +482,6 @@ try:
         curr_price_str = f"{int(round(current_price)):,}원" if CURRENCY == "원" else f"${current_price:.2f}"
         col3.metric("현재 체결가", curr_price_str)
 
-        # [수정됨] 직관적인 표기법 적용 (보상 : 리스크)
         col4.metric(
             "기대 손익비 (Reward:Risk)",
             f"{rr_ratio:.2f} : 1",
@@ -631,11 +634,13 @@ try:
         # 12. 하단 분석 메타정보
         # ==============================================================================
 
+        trading_h = float(target_info.get("trading_hours", 6.5))
+        annualized_vol = float(np.sqrt(max(pred_rv, 0.0) * 252.0 * trading_h) * 100.0)
+
         with st.expander("모형 상태 및 FPCA 특징치 정보"):
-            st.write(f"- **현재 2시간 실현 변동성 ($\\ln RV_t$):** `{in_rv:.4f}`")
-            annualized_vol = (np.sqrt(max(pred_rv, 0.0) * 252.0 * 6.5) * 100.0)
-            st.write(f"- **예측 1시간 선행 RV ($\\ln \\widehat{{RV}}_{{t+1}}$):** `{pred_log_rv:.4f}` (연환산 환산치: `{annualized_vol:.2f}%`)")
-            st.write(f"- **자산별 스케일 오프셋:** `+{offset_val:.2f}` (보정 후 RV: `{adjusted_log_rv:.4f}`)")
+            st.write(f"- **현재 2시간 관측 실현 변동성 ($\\ln RV_t$):** `{in_rv:.4f}`")
+            st.write(f"- **예측 1시간 선행 RV ($\\ln \\widehat{{RV}}_{{t+1}}$):** `{adjusted_log_rv:.4f}` (연환산 변동성: `{annualized_vol:.2f}%`)")
+            st.write(f"- **동적 레벨 보정치 (Local Offset):** `{dynamic_asset_offset:+.4f}` (Raw 모델 예측: `{raw_pred_log_rv:.4f}`)")
             st.write(f"- **FPCA 주성분 계수 (1~3):** `{float(fpc_scores[0]):.4f}, {float(fpc_scores[1]):.4f}, {float(fpc_scores[2]):.4f}`")
             st.caption("시세 데이터는 60초 주기로 자동 캐싱 갱신됩니다.")
 
