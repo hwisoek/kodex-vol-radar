@@ -35,7 +35,6 @@ st_autorefresh(
 
 st.sidebar.markdown("### ⚙️ 자산 모니터링")
 
-
 TICKER_MAP = {
     "KODEX 200 (한국 코스피200)": {
         "symbol": "069500.KS",
@@ -87,7 +86,6 @@ TICKER_MAP = {
         "market_name": "미국 NYSE Arca"
     }
 }
-
 
 selected_name = st.sidebar.selectbox(
     "종목 선택",
@@ -171,7 +169,6 @@ is_open, current_kst_str, hours_desc = check_market_status(
 
 st.markdown("## 🎯 글로벌 변동성 레이더 & 단타 트레이딩 가이드")
 
-
 status_bg = "#ecfdf5" if is_open else "#fef2f2"
 status_border = "#10b981" if is_open else "#ef4444"
 status_text_color = "#065f46" if is_open else "#991b1b"
@@ -179,7 +176,6 @@ status_sub_color = "#047857" if is_open else "#b91c1c"
 
 status_title = "🟢 [정규장 운영 중 - LIVE]" if is_open else "🔴 [정규장 마감 - CLOSED]"
 status_sub = f"{target_info['market_name']} 실시간 체결" if is_open else f"{target_info['market_name']} 마감 데이터 고정"
-
 
 status_banner_html = f"""
 <div style="
@@ -311,8 +307,8 @@ def get_detailed_trading_strategy(risk_score, channel_pos, rr_ratio, is_whipsaw_
         fpc_scores = padded
 
     fpc1 = float(fpc_scores[0])
-    is_strong_trend_up = fpc1 > 0.01
-    is_strong_trend_down = fpc1 < -0.01
+    is_strong_trend_up = fpc1 > 0.005
+    is_strong_trend_down = fpc1 < -0.005
 
     if risk_score >= 85.0:
         if is_whipsaw_risk:
@@ -351,9 +347,9 @@ def get_detailed_trading_strategy(risk_score, channel_pos, rr_ratio, is_whipsaw_
             else:
                 return "🎣 [전략 13] 스토캐스틱/RSI 과매도 기반 쌍바닥 매수", "#0284c7", "하단선 지지 후 2차 저점 확인(쌍바닥) 구간입니다. 분할 2회로 나누어 진입하세요.", "⚖️ 보통 (눌림목)", "normal"
         else:
-            if rr_ratio >= 1.3:
+            if rr_ratio >= 1.25:
                 return "💎 [전략 14] 황금 손익비 채널 하단 스윙 바잉", "#0ea5e9", "손절폭은 극히 짧고 기대 수익폭은 큽니다. 리스크 대비 수익 효율이 가장 높은 최적의 진입 타점입니다.", "✅ 적극 매수", "normal"
-            elif rr_ratio <= 0.7:
+            elif rr_ratio <= 0.8:
                 return "⚠️ [전략 15] 손익비 열위 구간 진입 보류 및 분할 익절", "#64748b", "상단 목표가에 근접하여 추가 상승 룸 대비 하방 리스크가 큽니다. 보유 물량을 현금화하세요.", "⚖️ 보통 (익절우선)", "normal"
             elif 45.0 <= channel_pos <= 55.0:
                 return "⏳ [전략 16] 수렴 구간 브레이크아웃 대기 (방향성 탐색)", "#0ea5e9", "진폭이 압축되는 중간 지대입니다. 이탈 방향이 확인될 때까지 관망하세요.", "⚖️ 중립 (수렴)", "normal"
@@ -425,31 +421,37 @@ try:
         risk_score = float(np.clip(raw_score, 0.0, 100.0))
 
         # ----------------------------------------------------------------------
-        # 변동성 폭 및 방향성(드리프트) 계산
+        # 정밀 변동폭 및 모멘텀 드리프트 산출
         # ----------------------------------------------------------------------
         pred_sigma_pct = float(np.sqrt(max(pred_rv, 0.0)))
         expected_range_value = float(current_price * pred_sigma_pct)
 
-        # FPC 1번 스코어(모멘텀/추세)를 기반으로 1시간 기대 드리프트 산출
-        # (변동폭의 ±50% 한도 내로 클리핑하여 밴드가 비정상적으로 왜곡되는 것 방지)
-        drift_factor = 0.5  # 추세 반영 민감도 (필요에 따라 0.3~0.7 조절 가능)
-        raw_mu_pct = float(fpc_scores[0] * drift_factor)
-        pred_mu_pct = float(np.clip(raw_mu_pct, -pred_sigma_pct * 0.5, pred_sigma_pct * 0.5))
-        drift_value = float(current_price * pred_mu_pct)
+        # 최근 2시간 궤적 내 가격 위치 (0% ~ 100%)
+        # 2시간 고점/저점을 기준으로 현재가의 실제 상대 위치 파악
+        past_min = float(np.min(prices))
+        past_max = float(np.max(prices))
+        price_spread = max(past_max - past_min, 1e-5)
+        raw_channel_pos = ((current_price - past_min) / price_spread) * 100.0
+        channel_pos = float(np.clip(raw_channel_pos, 0.0, 100.0))
 
-        # 드리프트가 적용된 비대칭 상·하단 타겟 산출
-        expected_upper = float(current_price + drift_value + expected_range_value)
-        expected_lower = float(current_price + drift_value - expected_range_value)
+        # 모멘텀(드리프트) 계수: 최근 추세(fpc_scores[0])를 기반으로 tanh 스케일링
+        # fpc1이 0.005 이상이면 유의미한 상승 기울기
+        trend_intensity = float(np.tanh(fpc_scores[0] / 0.008))
+        
+        # 1시간 뒤 기대 드리프트 금액 (변동폭의 최대 ±35% 한도로 부드럽게 반영)
+        drift_val = float(expected_range_value * 0.35 * trend_intensity)
+
+        # 예측 상/하단 타겟 (1시간 뒤 중심축이 drift_val 만큼 상향/하향 편향됨)
+        expected_upper = float(current_price + drift_val + expected_range_value)
+        expected_lower = float(current_price + drift_val - expected_range_value)
         expected_mid = (expected_upper + expected_lower) / 2.0
 
-        # 보상(목표폭) 및 리스크(손절폭) 산출
+        # 보상(상방 목표까지 거리) vs 리스크(하방 손절선까지 거리)
         reward_dist = max(expected_upper - current_price, 1e-5)
         risk_dist = max(current_price - expected_lower, 1e-5)
-        rr_ratio = float(reward_dist / max(risk_dist, 1e-5))
-
-        # 채널 내 현재가 위치 (0~100%, 드리프트에 따라 중심 50%에서 유동적으로 변화)
-        denom = max(expected_upper - expected_lower, 1e-5)
-        channel_pos = float(np.clip(((current_price - expected_lower) / denom) * 100.0, 0.0, 100.0))
+        
+        # 기대 손익비 계산 (상승 추세 시 1.0 초과, 하락 추세 시 1.0 미만)
+        rr_ratio = float(reward_dist / risk_dist)
 
         is_whipsaw_risk = bool(abs(float(fpc_scores[2])) > 0.015)
 
@@ -489,7 +491,7 @@ try:
         col4.metric(
             "기대 손익비 (R:R)",
             f"1 : {rr_ratio:.2f}",
-            delta="균형" if 0.9 <= rr_ratio <= 1.1 else ("유리" if rr_ratio > 1.1 else "불리")
+            delta="균형" if 0.95 <= rr_ratio <= 1.05 else ("유리" if rr_ratio > 1.05 else "불리")
         )
 
         # ==============================================================================
@@ -531,9 +533,9 @@ try:
             </div>
             <div style="background-color: #f8fafc; padding: 12px 16px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #f1f5f9;">
                 <div style="display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: #475569; margin-bottom: 6px; flex-wrap: wrap;">
-                    <span style="font-weight: 600;">손절선 ({lower_str})</span>
-                    <span style="color: #0284c7; font-weight: 700;">현재 채널 위치: {channel_pos:.1f}%</span>
-                    <span style="font-weight: 600;">목표가 ({upper_str})</span>
+                    <span style="font-weight: 600;">최근 저점 지지</span>
+                    <span style="color: #0284c7; font-weight: 700;">현재 2시간 밴드 내 위치: {channel_pos:.1f}%</span>
+                    <span style="font-weight: 600;">최근 고점 저항</span>
                 </div>
                 <div style="width: 100%; background-color: #e2e8f0; border-radius: 6px; height: 10px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);">
                     <div style="width: {channel_pos}%; background: linear-gradient(90deg, #10b981 0%, #0ea5e9 50%, #ef4444 100%); height: 100%;"></div>
@@ -555,8 +557,18 @@ try:
         time_labels[-1] = "현재"
 
         future_labels = ["현재", "+30분", "+60분"]
-        future_upper = [current_price, float(current_price + expected_range_value * 0.7), expected_upper]
-        future_lower = [current_price, float(current_price - expected_range_value * 0.7), expected_lower]
+        
+        # 미래 콘 밴드도 30분 시점에 드리프트의 절반을 반영하여 자연스럽게 연결
+        future_upper = [
+            current_price,
+            float(current_price + (drift_val * 0.5) + (expected_range_value * 0.7)),
+            expected_upper
+        ]
+        future_lower = [
+            current_price,
+            float(current_price + (drift_val * 0.5) - (expected_range_value * 0.7)),
+            expected_lower
+        ]
 
         if SYMBOL == "GLD":
             line_color = "#d97706"
@@ -623,7 +635,6 @@ try:
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="#334155"))
         )
 
-        # streamlit 최신 버전 권장 방식 적용 (use_container_width 대신 명시적 지정)
         st.plotly_chart(fig, use_container_width=True)
 
         # ==============================================================================
