@@ -429,6 +429,7 @@ try:
 
         expected_upper = float(current_price + expected_range_value)
         expected_lower = float(current_price - expected_range_value)
+        expected_mid = (expected_upper + expected_lower) / 2.0
 
         reward_dist = max(expected_upper - current_price, 1e-5)
         risk_dist = max(current_price - expected_lower, 1e-5)
