@@ -1,15 +1,340 @@
+import streamlit as st
+import numpy as np
+import pandas as pd
+import joblib
+import yfinance as yf
+import requests
+import xml.etree.ElementTree as ET
+import plotly.graph_objects as go
+from scipy.interpolate import make_interp_spline
+from streamlit_autorefresh import st_autorefresh
+from datetime import datetime, time
+import pytz
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ==============================================================================
-# 7. 전체 종목 대상 데이터 산출 및 메인 화면 렌더링
+# 1. 페이지 레이아웃 및 자동 새로고침 설정
 # ==============================================================================
 
-st.markdown("## 🎯 글로벌 실시간 변동성 스캐너 & 순위 레이더")
+st.set_page_config(
+    page_title="글로벌 변동성 레이더 & 단타 트레이딩 가이드",
+    page_icon="🎯",
+    layout="wide"
+)
+
+st_autorefresh(
+    interval=60 * 1000,
+    key="global_vol_radar_refresh"
+)
+
+
+# ==============================================================================
+# 2. 전체 종목 풀 (TICKER_MAP - 84개)
+# ==============================================================================
+
+TICKER_MAP = {
+    # 1. 한국 시장 대표 지수 및 섹터 ETF (12개)
+    "KODEX 200 (코스피 200)": {"symbol": "069500.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "069500"},
+    "KODEX 코스닥150": {"symbol": "229200.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "229200"},
+    "KODEX 레버리지 (코스피 2배)": {"symbol": "122630.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "122630"},
+    "KODEX 200선물인버스2X (곱버스)": {"symbol": "252670.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "252670"},
+    "KODEX 코스닥150레버리지": {"symbol": "233740.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "233740"},
+    "KODEX 코스닥150선물인버스": {"symbol": "251340.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "251340"},
+    "TIGER 2차전지테마": {"symbol": "305540.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "305540"},
+    "TIGER 반도체 TOP10": {"symbol": "396500.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "396500"},
+    "KODEX 반도체": {"symbol": "091160.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "091160"},
+    "TIGER 미국필라델피아반도체나스닥": {"symbol": "381180.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "381180"},
+    "TIGER 미국나스닥100": {"symbol": "133690.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "133690"},
+    "ACE 미국S&P500": {"symbol": "360200.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "360200"},
+
+    # 2. 한국 대형주 & 단타 인기 종목 (18개)
+    "삼성전자 (005930)": {"symbol": "005930.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "005930"},
+    "SK하이닉스 (000660)": {"symbol": "000660.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "000660"},
+    "LG에너지솔루션 (373220)": {"symbol": "373220.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "373220"},
+    "삼성바이오로직스 (207940)": {"symbol": "207940.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "207940"},
+    "현대차 (005380)": {"symbol": "005380.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "005380"},
+    "기아 (000270)": {"symbol": "000270.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "000270"},
+    "셀트리온 (068270)": {"symbol": "068270.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "068270"},
+    "POSCO홀딩스 (005490)": {"symbol": "005490.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "005490"},
+    "NAVER (네이버 035420)": {"symbol": "035420.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "035420"},
+    "카카오 (035720)": {"symbol": "035720.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "035720"},
+    "에코프로비엠 (247540)": {"symbol": "247540.KQ", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "코스닥 (KOSDAQ)", "naver_symbol": "247540"},
+    "에코프로 (086520)": {"symbol": "086520.KQ", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "코스닥 (KOSDAQ)", "naver_symbol": "086520"},
+    "알테오젠 (196170)": {"symbol": "196170.KQ", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "코스닥 (KOSDAQ)", "naver_symbol": "196170"},
+    "HLB (028300)": {"symbol": "028300.KQ", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "코스닥 (KOSDAQ)", "naver_symbol": "028300"},
+    "한미반도체 (042700)": {"symbol": "042700.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "042700"},
+    "삼천당제약 (000250)": {"symbol": "000250.KQ", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "코스닥 (KOSDAQ)", "naver_symbol": "000250"},
+    "두산에너빌리티 (034020)": {"symbol": "034020.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "034020"},
+    "한화에어로스페이스 (012450)": {"symbol": "012450.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "012450"},
+
+    # 3. 미국 지수 및 섹터 대표 ETF (10개)
+    "SPY (미국 S&P 500 ETF)": {"symbol": "SPY", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "QQQ (미국 나스닥 100 ETF)": {"symbol": "QQQ", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "DIA (다우존스 30 ETF)": {"symbol": "DIA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "IWM (러셀 2000 중소형 ETF)": {"symbol": "IWM", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "SOXX (필라델피아 반도체 ETF)": {"symbol": "SOXX", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "SMH (반호크 반도체 ETF)": {"symbol": "SMH", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "XLK (미국 기술주 섹터 ETF)": {"symbol": "XLK", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "XLF (미국 금융 섹터 ETF)": {"symbol": "XLF", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "XLE (미국 에너지 섹터 ETF)": {"symbol": "XLE", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "ARKK (아크 혁신 ETF)": {"symbol": "ARKK", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+
+    # 4. 미국 초고변동성 레버리지 / 인버스 ETF (16개)
+    "TQQQ (나스닥 3배 레버리지)": {"symbol": "TQQQ", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "SQQQ (나스닥 -3배 인버스)": {"symbol": "SQQQ", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "SOXL (반도체 3배 레버리지)": {"symbol": "SOXL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "SOXS (반도체 -3배 인버스)": {"symbol": "SOXS", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "UPRO (S&P 500 3배 레버리지)": {"symbol": "UPRO", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "SPXU (S&P 500 -3배 인버스)": {"symbol": "SPXU", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "TNA (러셀 2000 3배 레버리지)": {"symbol": "TNA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "TZA (러셀 2000 -3배 인버스)": {"symbol": "TZA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "NVDL (엔비디아 2배 레버리지)": {"symbol": "NVDL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "TSLL (테슬라 2배 레버리지)": {"symbol": "TSLL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "TSLS (테슬라 -1배 인버스)": {"symbol": "TSLS", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "CONL (코인베이스 2배 레버리지)": {"symbol": "CONL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "FNGU (FAANG+ 테크 3배 레버리지)": {"symbol": "FNGU", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "FNGD (FAANG+ 테크 -3배 인버스)": {"symbol": "FNGD", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "LABU (바이오 3배 레버리지)": {"symbol": "LABU", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "LABD (바이오 -3배 인버스)": {"symbol": "LABD", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+
+    # 5. 원자재, 채권, 안전자산 ETF (4개)
+    "GLD (SPDR 글로벌 금 ETF)": {"symbol": "GLD", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "SLV (iShares 글로벌 은 ETF)": {"symbol": "SLV", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "마벨 테크놀로지 (MRVL)": {"symbol": "MRVL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "KLA 코퍼레이션 (KLAC)": {"symbol": "KLAC", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+
+    # 6. 미국 빅테크 (M7) 및 AI·반도체 핵심주 (13개)
+    "애플 (AAPL)": {"symbol": "AAPL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "마이크로소프트 (MSFT)": {"symbol": "MSFT", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "엔비디아 (NVDA)": {"symbol": "NVDA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "알파벳 A (GOOGL)": {"symbol": "GOOGL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "아마존 (AMZN)": {"symbol": "AMZN", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "메타 (META)": {"symbol": "META", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "테슬라 (TSLA)": {"symbol": "TSLA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "브로드컴 (AVGO)": {"symbol": "AVGO", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "AMD (AMD)": {"symbol": "AMD", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "TSMC ADR (TSM)": {"symbol": "TSM", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "ASML ADR (ASML)": {"symbol": "ASML", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "마이크론 테크놀로지 (MU)": {"symbol": "MU", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "퀄컴 (QCOM)": {"symbol": "QCOM", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+
+    # 7. 미국 소프트웨어, AI, 플랫폼, 핀테크 (12개)
+    "팔란티어 테크 (PLTR)": {"symbol": "PLTR", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "코인베이스 (COIN)": {"symbol": "COIN", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "넷플릭스 (NFLX)": {"symbol": "NFLX", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "세일즈포스 (CRM)": {"symbol": "CRM", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "오라클 (ORCL)": {"symbol": "ORCL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "어도비 (ADBE)": {"symbol": "ADBE", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "우버 테크놀로지스 (UBER)": {"symbol": "UBER", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "스노우플레이크 (SNOW)": {"symbol": "SNOW", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "크라우드스트라이크 (CRWD)": {"symbol": "CRWD", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "로빈후드 (HOOD)": {"symbol": "HOOD", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "블록 (SQ)": {"symbol": "SQ", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "마이크로스트래티지 (MSTR)": {"symbol": "MSTR", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+
+    # 8. 전통 우량주, 바이오, 금융, 소비재 (12개)
+    "일라이 릴리 (LLY)": {"symbol": "LLY", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "노보 노디스크 ADR (NVO)": {"symbol": "NVO", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "JP모건 체이스 (JPM)": {"symbol": "JPM", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "비자 (V)": {"symbol": "V", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "마스터카드 (MA)": {"symbol": "MA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "월마트 (WMT)": {"symbol": "WMT", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "코스트코 (COST)": {"symbol": "COST", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "엑슨모빌 (XOM)": {"symbol": "XOM", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "셰브론 (CVX)": {"symbol": "CVX", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "보잉 (BA)": {"symbol": "BA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "화이자 (PFE)": {"symbol": "PFE", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "모더나 (MRNA)": {"symbol": "MRNA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"}
+}
+
+
+# ==============================================================================
+# 3. 장 상태 판별 함수
+# ==============================================================================
+
+def check_market_status(target_tz_str: str, is_kr: bool):
+    kst = pytz.timezone("Asia/Seoul")
+    now_kst = datetime.now(kst)
+
+    target_tz = pytz.timezone(target_tz_str)
+    now_target = datetime.now(target_tz)
+
+    weekday = now_target.weekday()
+    is_weekend = weekday >= 5
+
+    if is_kr:
+        open_time = time(9, 0)
+        close_time = time(15, 30)
+        is_open = not is_weekend and open_time <= now_target.time() <= close_time
+        hours_str = "09:00 ~ 15:30 KST"
+        time_display_str = f"한국: <b>{now_kst.strftime('%Y-%m-%d %H:%M:%S')} KST</b>"
+    else:
+        open_time = time(9, 30)
+        close_time = time(16, 0)
+        is_open = not is_weekend and open_time <= now_target.time() <= close_time
+        tz_abbr = now_target.strftime("%Z")
+        hours_str = f"현지 09:30 ~ 16:00 {tz_abbr}"
+        time_display_str = (
+            f"현지: <b>{now_target.strftime('%m-%d %H:%M:%S')} {tz_abbr}</b> "
+            f"(한국: {now_kst.strftime('%H:%M:%S')} KST)"
+        )
+
+    return is_open, time_display_str, hours_str
+
+
+# ==============================================================================
+# 4. 모델 로드
+# ==============================================================================
+
+@st.cache_resource
+def load_model():
+    return joblib.load("model_artifacts.pkl")
+
+try:
+    artifacts = load_model()
+    mu_curve = np.array(artifacts["mu_curve"], dtype=float)
+    V_comp = np.array(artifacts["V_comp"], dtype=float)
+    scaler = artifacts["scaler"]
+    model = artifacts["model"]
+    rv_history = np.array(artifacts["rv_history"], dtype=float)
+    t_grid = np.linspace(0.0, 1.0, 24)
+except Exception as e:
+    st.error(f"모델 아티팩트(model_artifacts.pkl) 로드 실패: {e}")
+    st.stop()
+
+
+# ==============================================================================
+# 5. 실시간 5분봉 수집 함수
+# ==============================================================================
+
+@st.cache_data(ttl=60)
+def fetch_recent_5m_candles(symbol: str, is_kr: bool, naver_symbol: str = ""):
+    try:
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        })
+        ticker = yf.Ticker(symbol, session=session)
+        df_yf = ticker.history(period="5d", interval="5m", prepost=True)
+
+        if df_yf is not None and not df_yf.empty and "Close" in df_yf.columns:
+            prices = df_yf["Close"].dropna().values
+            if len(prices) >= 24:
+                return np.array(prices[-24:], dtype=float)
+    except Exception:
+        pass
+
+    if not is_kr:
+        try:
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=5m&range=5d&includePrePost=true"
+            res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=6)
+            if res.status_code == 200:
+                data = res.json()
+                result = data.get("chart", {}).get("result", [])
+                if result:
+                    indicators = result[0].get("indicators", {}).get("quote", [{}])[0]
+                    closes = indicators.get("close", [])
+                    clean_closes = [c for c in closes if c is not None]
+                    if len(clean_closes) >= 24:
+                        return np.array(clean_closes[-24:], dtype=float)
+        except Exception:
+            pass
+
+    if is_kr and naver_symbol:
+        try:
+            url = f"https://fchart.stock.naver.com/sise.nhn?symbol={naver_symbol}&timeframe=minute&count=120&requestType=0"
+            res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+            res.raise_for_status()
+            root = ET.fromstring(res.text)
+            items = root.findall(".//item")
+            close_prices = []
+            for item in items:
+                parts = item.attrib.get("data", "").split("|")
+                if len(parts) >= 5:
+                    close_prices.append(float(parts[4]))
+            if len(close_prices) >= 24:
+                return np.array(close_prices[-24:], dtype=float)
+        except Exception:
+            pass
+
+    raise ValueError(f"{symbol} 데이터 수집 실패")
+
+
+# ==============================================================================
+# 6. 전략 매핑 함수
+# ==============================================================================
+
+def get_detailed_trading_strategy(risk_score, channel_pos, rr_ratio, is_whipsaw_risk, trend_intensity):
+    is_strong_trend_up = trend_intensity > 0.3
+    is_strong_trend_down = trend_intensity < -0.3
+
+    if risk_score >= 85.0:
+        if is_whipsaw_risk:
+            if channel_pos > 70.0:
+                return "🔥 [전략 01] 불꽃놀이 피크아웃 역추세 스캘핑", "#dc2626", "극단적 과열 상태에서 휩소 징후가 포착되었습니다. 상단 돌파 시 추격 매수를 금지하고 단타 숏 관점으로 대응하세요.", "🚨 초고위험 (피크아웃)"
+            elif channel_pos < 30.0:
+                return "💥 [전략 02] 패닉셀 투매 낙주 투입", "#dc2626", "극단적 패닉셀 투매 국면입니다. 손절선 이탈 시 일시적 반등을 노린 분할 매수만 유효하며 즉시 칼손절이 필수입니다.", "🚨 초고위험 (낙주)"
+            else:
+                return "🌪️ [전략 03] 초고변동 진공 휩소 회피 (포지션 청산)", "#b91c1c", "호가 갭이 벌어지고 상하 변동폭이 극에 달했습니다. 슬리피지 비용을 고려해 신규 진입을 전면 중단하세요.", "🚨 극위험 (관망)"
+        else:
+            if channel_pos > 50.0 and is_strong_trend_up:
+                return "🚀 [전략 04] 불타기 모멘텀 호가 돌파 스캘핑", "#ef4444", "상승 관성이 극대화된 정방향 돌파 구간입니다. 추격 진입 후 짧게 분할 익절하세요.", "🚨 고위험 (돌파)"
+            elif channel_pos <= 50.0 and is_strong_trend_down:
+                return "⚡ [전략 05] 지지선 붕괴 하방 모멘텀 숏/손절 가속", "#ef4444", "하방 변동성 폭발로 주요 지지 라인이 뚫리는 국면입니다. 롱 포지션은 청산하세요.", "🚨 고위험 (하방돌파)"
+            else:
+                return "🎯 [전략 06] 1σ 밴드 외곽 상하단 볼린저 터치 스캘핑", "#f97316", "방향성은 중립이나 진폭이 큽니다. 상단선 도달 시 매도, 하단선 도달 시 매수하되 홀딩을 짧게 가져가세요.", "🚨 고위험 (밴드터치)"
+    elif risk_score >= 65.0:
+        if is_whipsaw_risk:
+            if rr_ratio > 1.2:
+                return "⚠️ [전략 07] 손익비 우위 역배열 덫 탈출 단타", "#ea580c", "손익비는 유리하나 반전 가능성이 큽니다. 채널 하단 근접 시 지정가로만 체결시키고 조기 익절하세요.", "⚖️ 고위험 (역추세)"
+            else:
+                return "🛑 [전략 08] 가짜 돌파(Fakeout) 트랩 매도 대응", "#ea580c", "전고점을 뚫는 척하다 내려앉는 불트랩 확률이 높습니다. 저항선 부근에서 물량을 정리하세요.", "⚖️ 주의 (트랩위험)"
+        else:
+            if channel_pos >= 60.0:
+                return "🌊 [전략 09] 이동평균선 이탈 방어 매매", "#0284c7", "상승 추세가 단단하게 유지되고 있습니다. 이평선 지지를 확인하며 눌림목마다 분할 매수하세요.", "🔥 고변동 추세"
+            elif channel_pos <= 40.0:
+                return "🛡️ [전략 10] 채널 하단 지지 확인 V자 반등 공략", "#0284c7", "안정적인 추세 파동 속 일시적 하단 터치입니다. 지지선 체결 누적 확인 후 반등을 노리세요.", "🔥 매수 우위"
+            else:
+                return "🧭 [전략 11] 중심선 돌파 추세 강화 포지션 홀딩", "#0ea5e9", "채널 중간값에서 상방으로 방향을 틀기 시작했습니다. 추세 추종 관점 홀딩이 유효합니다.", "🔥 추세 지속"
+    elif risk_score >= 40.0:
+        if is_whipsaw_risk:
+            if channel_pos > 50.0:
+                return "🔄 [전략 12] 박스 상단 수렴 후 페이크 역지정 매매", "#0284c7", "중변동 구간에서 비틀림이 감지되었습니다. 상단선 아래에 익절을 걸고 로스컷을 타이트하게 잡으세요.", "⚖️ 보통 (비틀림)"
+            else:
+                return "🎣 [전략 13] 과매도 기반 쌍바닥 매수", "#0284c7", "하단선 지지 후 2차 저점 확인(쌍바닥) 구간입니다. 분할 2회로 나누어 진입하세요.", "⚖️ 보통 (눌림목)"
+        else:
+            if rr_ratio >= 1.25:
+                return "💎 [전략 14] 황금 손익비 채널 하단 스윙 바잉", "#0ea5e9", "손절폭은 극히 짧고 기대 수익폭은 큽니다. 리스크 대비 수익 효율이 가장 높은 진입 타점입니다.", "✅ 적극 매수"
+            elif rr_ratio <= 0.8:
+                return "⚠️ [전략 15] 손익비 열위 구간 진입 보류 및 분할 익절", "#64748b", "상단 목표가에 근접하여 추가 상승 폭 대비 하방 리스크가 큽니다. 보유 물량을 현금화하세요.", "⚖️ 보통 (익절우선)"
+            elif 45.0 <= channel_pos <= 55.0:
+                return "⏳ [전략 16] 수렴 구간 브레이크아웃 대기 (방향성 탐색)", "#0ea5e9", "진폭이 압축되는 중간 지대입니다. 이탈 방향이 확인될 때까지 관망하세요.", "⚖️ 중립 (수렴)"
+            else:
+                return "📈 [전략 17] 표준 채널 내 지지/저항 핑퐁 트레이딩", "#0ea5e9", "규칙적인 파동을 그리는 장세입니다. 하단 30% 매수, 상단 70% 매도 규칙을 적용하세요.", "⚖️ 보통 (채널)"
+    elif risk_score >= 20.0:
+        if channel_pos >= 75.0:
+            return "🧱 [전략 18] 박스권 천장 역매매 (숏/비중 축소)", "#10b981", "변동성 에너지가 소진되어 상단 돌파 에너지가 부족합니다. 천장 부근에서 분할 익절하세요.", "🛡️ 안정 (박스상단)"
+        elif channel_pos <= 25.0:
+            return "🧱 [전략 19] 박스권 바닥 물량 모으기 (저점 줍기)", "#10b981", "하방 압력이 약해 바닥을 깰 확률이 낮습니다. 손절 기준선을 엄격히 걸고 지정가 매수가 유효합니다.", "🛡️ 안정 (박스하단)"
+        else:
+            return "💤 [전략 20] 지루한 횡보장 스캘핑 자제 (수수료 주의)", "#10b981", "변동폭이 좁아 잦은 매매 시 수수료로 시드가 잠식됩니다. 매매 횟수를 줄이세요.", "🛡️ 안정 (횡보)"
+    else:
+        if is_whipsaw_risk:
+            return "🪤 [전략 21] 개미 털기용 잔파도 노이즈 무시", "#059669", "거래량이 마른 상태에서 발생하는 일시적 노이즈입니다. 뇌동매매를 삼가세요.", "🛡️ 극안정 (노이즈)"
+        elif channel_pos > 80.0:
+            return "🔋 [전략 22] 에너지 응축 상방 폭발 직전 대기", "#059669", "횡보 후 상단선에 가격이 밀착되었습니다. 볼린저 스퀴즈 이후 상방 폭발 가능성을 열어두세요.", "🔋 응축 (상방대기)"
+        elif channel_pos < 20.0:
+            return "⚠️ [전략 23] 저변동성 하방 이탈(계단식 하락) 경계", "#059669", "거래량 없이 서서히 밀리는 계단식 하락 패턴 위험이 있습니다. 바닥 거래량 수반을 확인하세요.", "🛡️ 극안정 (하방주의)"
+        else:
+            return "🛑 [전략 24] 에너지 완충 구간 전면 관망 (휴식 권장)", "#059669", "변동성이 최저 수준으로 수렴했습니다. 큰 추세가 분출되기 전 휴식을 취하세요.", "🛡️ 극안정 (관망)"
+
+
+# ==============================================================================
+# 7. 단일 종목 연산 워커 함수
+# ==============================================================================
 
 def process_single_asset(asset_name, target_info):
-    """단일 종목 연산 워커 함수 (멀티스레드용)"""
     symbol = str(target_info["symbol"])
-    currency = str(target_info["currency"])
     is_open, time_display_str, hours_desc = check_market_status(target_info["tz"], target_info["is_kr"])
 
     try:
@@ -105,9 +430,12 @@ def process_single_asset(asset_name, target_info):
         return None
 
 
-# ------------------------------------------------------------------------------
-# 7-1. 전체 84개 종목 병렬 스캔 (ThreadPoolExecutor)
-# ------------------------------------------------------------------------------
+# ==============================================================================
+# 8. 메인 렌더링 & 병렬 계산
+# ==============================================================================
+
+st.markdown("## 🎯 글로벌 실시간 변동성 스캐너 & 순위 레이더")
+
 all_calculated = []
 
 with st.spinner("TICKER_MAP 내 전체 종목의 변동성 데이터를 병렬 스캔 중..."):
@@ -122,15 +450,14 @@ with st.spinner("TICKER_MAP 내 전체 종목의 변동성 데이터를 병렬 �
                 all_calculated.append(res)
 
 if not all_calculated:
-    st.error("데이터 수집에 성공한 종목이 없습니다. 네트워크나 API 상태를 확인하세요.")
+    st.error("데이터 수집에 성공한 종목이 없습니다. 네트워크 환경을 확인하세요.")
     st.stop()
 
-# 위험 지수 기준 내림차순 정렬
+# 정렬
 full_ranked = sorted(all_calculated, key=lambda x: x["risk_score"], reverse=True)
 
-
 # ------------------------------------------------------------------------------
-# 7-2. 전체 순위 데이터프레임 (스캐너 테이블)
+# 8-1. 전체 순위 테이블
 # ------------------------------------------------------------------------------
 table_data = []
 for idx, d in enumerate(full_ranked):
@@ -150,7 +477,7 @@ for idx, d in enumerate(full_ranked):
 
 df_rank = pd.DataFrame(table_data)
 
-st.markdown(f"#### 📊 전체 모니터링 풀 순위표 (총 {len(df_rank)}개 종목 수신 완료)")
+st.markdown(f"#### 📊 전체 모니터링 풀 실시간 순위표 (총 {len(df_rank)}개 종목 수신 완료)")
 st.dataframe(
     df_rank,
     column_config={
@@ -164,16 +491,15 @@ st.dataframe(
     },
     use_container_width=True,
     hide_index=True,
-    height=380
+    height=360
 )
 
 # ------------------------------------------------------------------------------
-# 7-3. 상위 종목(Top 3) 또는 선택 종목 상세 차트 렌더링
+# 8-2. 상세 종목 탭 렌더링
 # ------------------------------------------------------------------------------
 st.markdown("---")
 st.markdown("### 🔍 상세 분석 대상 선택")
 
-# 전체 순위 상위 종목을 기본값으로 추천
 rank_names = [d["asset_name"] for d in full_ranked]
 detail_targets = st.multiselect(
     "상세 차트를 볼 종목을 선택하세요 (기본: 변동성 Top 3)",
@@ -189,7 +515,6 @@ if display_targets:
 
     for tab, data in zip(tabs, display_targets):
         with tab:
-            # (기존의 메트릭 카드, 액션 플랜, Plotly 차트, FPCA Expander 코드 그대로 위치)
             asset_name = data["asset_name"]
             target_info = data["target_info"]
             SYMBOL = str(target_info["symbol"])
@@ -279,7 +604,7 @@ if display_targets:
             </div>
             """, unsafe_allow_html=True)
 
-            # 차트
+            # 인터랙티브 시계열 차트
             prices = data["prices"]
             drift_val = data["drift_val"]
             time_labels = [f"-{(23 - int(i)) * 5}분" for i in range(24)]
