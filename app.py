@@ -424,17 +424,30 @@ try:
         raw_score = float(np.mean(rv_history <= adjusted_log_rv) * 100.0)
         risk_score = float(np.clip(raw_score, 0.0, 100.0))
 
+        # ----------------------------------------------------------------------
+        # 변동성 폭 및 방향성(드리프트) 계산
+        # ----------------------------------------------------------------------
         pred_sigma_pct = float(np.sqrt(max(pred_rv, 0.0)))
         expected_range_value = float(current_price * pred_sigma_pct)
 
-        expected_upper = float(current_price + expected_range_value)
-        expected_lower = float(current_price - expected_range_value)
+        # FPC 1번 스코어(모멘텀/추세)를 기반으로 1시간 기대 드리프트 산출
+        # (변동폭의 ±50% 한도 내로 클리핑하여 밴드가 비정상적으로 왜곡되는 것 방지)
+        drift_factor = 0.5  # 추세 반영 민감도 (필요에 따라 0.3~0.7 조절 가능)
+        raw_mu_pct = float(fpc_scores[0] * drift_factor)
+        pred_mu_pct = float(np.clip(raw_mu_pct, -pred_sigma_pct * 0.5, pred_sigma_pct * 0.5))
+        drift_value = float(current_price * pred_mu_pct)
+
+        # 드리프트가 적용된 비대칭 상·하단 타겟 산출
+        expected_upper = float(current_price + drift_value + expected_range_value)
+        expected_lower = float(current_price + drift_value - expected_range_value)
         expected_mid = (expected_upper + expected_lower) / 2.0
 
+        # 보상(목표폭) 및 리스크(손절폭) 산출
         reward_dist = max(expected_upper - current_price, 1e-5)
         risk_dist = max(current_price - expected_lower, 1e-5)
         rr_ratio = float(reward_dist / max(risk_dist, 1e-5))
 
+        # 채널 내 현재가 위치 (0~100%, 드리프트에 따라 중심 50%에서 유동적으로 변화)
         denom = max(expected_upper - expected_lower, 1e-5)
         channel_pos = float(np.clip(((current_price - expected_lower) / denom) * 100.0, 0.0, 100.0))
 
