@@ -318,7 +318,7 @@ try:
         # ==============================================================================
         # 10. 차트 렌더링: 최근 2시간 궤적 + 향후 1시간 예상 변동 밴드
         # ==============================================================================
-        time_labels = [f"-{(23 - i) * 5}분" for i in range(24)]
+        time_labels = [f"-{(23 - int(i)) * 5}분" for i in range(24)]
         time_labels[-1] = "현재"
 
         future_labels = ["현재", "+30분", "+60분"]
@@ -376,9 +376,9 @@ try:
             annotation_font=dict(size=10, color="#94a3b8")
         )
 
-        # X축 라벨 틱 간소화: 15분 단위 표시
-        tick_indices = [0, 3, 6, 9, 12, 15, 18, 21, 23]
-        custom_ticks = [time_labels[i] for i in tick_indices] + ["+30분", "+60분"]
+        # X축 라벨 틱 간소화 (안전한 명시적 결합)
+        selected_past_ticks = [time_labels[idx] for idx in [0, 3, 6, 9, 12, 15, 18, 21, 23]]
+        custom_ticks = selected_past_ticks + ["+30분", "+60분"]
 
         status_text = "실시간" if is_open else "직전 마감 기준"
         fig.update_layout(
