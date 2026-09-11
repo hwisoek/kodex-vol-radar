@@ -432,7 +432,7 @@ try:
 
         reward_dist = max(expected_upper - current_price, 1e-5)
         risk_dist = max(current_price - expected_lower, 1e-5)
-        rr_ratio = float(reward_dist / risk_dist)
+        rr_ratio = float(reward_dist / max(risk_dist, 1e-5))
 
         denom = max(expected_upper - expected_lower, 1e-5)
         channel_pos = float(np.clip(((current_price - expected_lower) / denom) * 100.0, 0.0, 100.0))
