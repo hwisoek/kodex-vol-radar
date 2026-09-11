@@ -198,13 +198,20 @@ def check_market_status(target_tz_str: str, is_kr: bool):
         close_time = time(15, 30)
         is_open = not is_weekend and open_time <= now_target.time() <= close_time
         hours_str = "09:00 ~ 15:30 KST"
+        time_display_str = f"한국: <b>{now_kst.strftime('%Y-%m-%d %H:%M:%S')} KST</b>"
     else:
         open_time = time(9, 30)
         close_time = time(16, 0)
         is_open = not is_weekend and open_time <= now_target.time() <= close_time
-        hours_str = "현지 09:30 ~ 16:00"
+        # 서머타임(EDT/EST) 자동 감지
+        tz_abbr = now_target.strftime("%Z")
+        hours_str = f"현지 09:30 ~ 16:00 {tz_abbr}"
+        time_display_str = (
+            f"현지: <b>{now_target.strftime('%m-%d %H:%M:%S')} {tz_abbr}</b> "
+            f"(한국: {now_kst.strftime('%H:%M:%S')} KST)"
+        )
 
-    return is_open, now_kst.strftime("%Y-%m-%d %H:%M:%S KST"), hours_str
+    return is_open, time_display_str, hours_str
 
 
 # ==============================================================================
@@ -377,7 +384,8 @@ for tab, asset_name in zip(tabs, selected_names):
         SYMBOL = str(target_info["symbol"])
         CURRENCY = str(target_info["currency"])
 
-        is_open, current_kst_str, hours_desc = check_market_status(
+        # 기존: is_open, current_kst_str, hours_desc = check_market_status(...)
+        is_open, time_display_str, hours_desc = check_market_status(
             target_info["tz"],
             target_info["is_kr"]
         )
@@ -396,7 +404,7 @@ for tab, asset_name in zip(tabs, selected_names):
                 <span style="font-size: 12px; font-weight: 500; color: {status_sub_color}; margin-left: 10px;">{status_sub} ({SYMBOL})</span>
             </div>
             <div style="font-size: 11px; color: {status_sub_color}; opacity: 0.8; white-space: nowrap; text-align: right;">
-                기준시각: <b>{current_kst_str}</b> &nbsp;|&nbsp; 운영: {hours_desc}
+                {time_display_str} &nbsp;|&nbsp; 운영: {hours_desc}
             </div>
         </div>
         """, unsafe_allow_html=True)
