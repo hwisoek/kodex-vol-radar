@@ -501,10 +501,16 @@ st.markdown("---")
 st.markdown("### 🔍 상세 분석 대상 선택")
 
 rank_names = [d["asset_name"] for d in full_ranked]
+
+# 1. session_state에 최초 1회만 기본값 세팅
+if "detail_targets_selection" not in st.session_state:
+    st.session_state["detail_targets_selection"] = rank_names[:min(3, len(rank_names))]
+
+# 2. default 인자를 빼고 key로 session_state 바인딩
 detail_targets = st.multiselect(
     "상세 차트를 볼 종목을 선택하세요 (기본: 변동성 Top 3)",
     options=rank_names,
-    default=rank_names[:min(3, len(rank_names))],
+    key="detail_targets_selection",
     max_selections=5
 )
 
