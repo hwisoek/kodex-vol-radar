@@ -4,5 +4,6 @@ pandas
 scipy
 scikit-learn
 joblib
-finance-datareader
 plotly
+requests
+yfinance
