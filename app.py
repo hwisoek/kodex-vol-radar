@@ -24,7 +24,7 @@ st.set_page_config(
 st_autorefresh(interval=60 * 1000, key="global_vol_radar_refresh")
 
 # ==============================================================================
-# 2. 사이드바: 모니터링 자산 선택 및 컴팩트 메타정보
+# 2. 사이드바: 모니터링 자산 선택 및 메타데이터
 # ==============================================================================
 st.sidebar.markdown("### ⚙️ 자산 모니터링")
 
@@ -81,8 +81,8 @@ TICKER_MAP = {
 
 selected_name = st.sidebar.selectbox("종목 선택", list(TICKER_MAP.keys()))
 target_info = TICKER_MAP[selected_name]
-SYMBOL = target_info["symbol"]
-CURRENCY = target_info["currency"]
+SYMBOL = str(target_info["symbol"])
+CURRENCY = str(target_info["currency"])
 
 sidebar_card_html = f"""<div style="background-color: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 12px; margin-top: 15px;">
 <div style="font-size: 11px; color: #94a3b8;">상장 거래소</div>
@@ -121,7 +121,7 @@ def check_market_status(target_tz_str: str, is_kr: bool):
 is_open, current_kst_str, hours_desc = check_market_status(target_info["tz"], target_info["is_kr"])
 
 # ==============================================================================
-# 4. 헤더 및 컴팩트 상태 알림 바
+# 4. 헤더 및 상태 바
 # ==============================================================================
 st.markdown("## 🎯 글로벌 변동성 레이더 & 단타 트레이딩 가이드")
 
@@ -142,7 +142,7 @@ status_banner_html = f"""<div style="background-color: {status_bg}; border-left:
 st.markdown(status_banner_html, unsafe_allow_html=True)
 
 # ==============================================================================
-# 5. 사전 학습 모델 및 고유함수 축 로드
+# 5. 모델 로드
 # ==============================================================================
 @st.cache_resource
 def load_model():
@@ -154,14 +154,14 @@ try:
     V_comp = artifacts["V_comp"]
     scaler = artifacts["scaler"]
     model = artifacts["model"]
-    rv_history = np.array(artifacts["rv_history"])
+    rv_history = np.array(artifacts["rv_history"], dtype=float)
     t_grid = np.linspace(0, 1, 24)
 except Exception as e:
     st.error(f"모델 아티팩트 로드 실패: {e}")
     st.stop()
 
 # ==============================================================================
-# 6. 실시간 5분봉 수집 파이프라인
+# 6. 실시간 5분봉 시세 파이프라인
 # ==============================================================================
 @st.cache_data(ttl=60)
 def fetch_recent_5m_candles(symbol: str, is_kr: bool):
@@ -191,13 +191,13 @@ def fetch_recent_5m_candles(symbol: str, is_kr: bool):
     raise ValueError(f"{symbol} 5분봉 표본 부족 (최소 24개 필요)")
 
 # ==============================================================================
-# 7. 실시간 추론 및 단타 트레이딩 지표 산출
+# 7. 실시간 추론 및 단타 지표 산출
 # ==============================================================================
 try:
     prices = fetch_recent_5m_candles(SYMBOL, target_info["is_kr"])
     
     if len(prices) == 24:
-        current_price = prices[-1]
+        current_price = float(prices[-1])
 
         # 1) 함수 곡선 평활화 및 FPCA 사영
         cidr = np.log(prices) - np.log(prices[0])
@@ -209,7 +209,7 @@ try:
         
         # 2) 기준 RV 및 1시간 선행 RV 예측
         in_log_ret = np.diff(np.log(prices))
-        in_rv = np.log(np.sum(in_log_ret**2) + 1e-8)
+        in_rv = float(np.log(np.sum(in_log_ret**2) + 1e-8))
         
         X = np.hstack([in_rv, fpc_scores]).reshape(1, -1)
         X_scaled = scaler.transform(X)
@@ -217,21 +217,22 @@ try:
         pred_rv = float(np.exp(pred_log_rv))
         
         # 3) 위험 점수 산출
-        adjusted_log_rv = pred_log_rv + target_info["offset"]
-        raw_score = float(np.mean(rv_history <= adjusted_log_rv) * 100)
+        offset_val = float(target_info["offset"])
+        adjusted_log_rv = float(pred_log_rv + offset_val)
+        raw_score = float(np.mean(rv_history <= adjusted_log_rv) * 100.0)
         risk_score = float(np.clip(raw_score, 0.0, 100.0))
         
-        # 4) 단타 맞춤 가격 범위 산출 (향후 1시간 1-sigma 진폭)
-        pred_sigma_pct = np.sqrt(pred_rv)
-        expected_range_value = current_price * pred_sigma_pct
-        expected_upper = current_price + expected_range_value
-        expected_lower = current_price - expected_range_value
+        # 4) 단타 맞춤 가격 범위 산출
+        pred_sigma_pct = float(np.sqrt(pred_rv))
+        expected_range_value = float(current_price * pred_sigma_pct)
+        expected_upper = float(current_price + expected_range_value)
+        expected_lower = float(current_price - expected_range_value)
 
-        # 손익비(Risk/Reward Ratio) 및 채널 내 위치 산출
         reward_dist = max(expected_upper - current_price, 1e-5)
         risk_dist = max(current_price - expected_lower, 1e-5)
-        rr_ratio = reward_dist / risk_dist
-        channel_pos = float(np.clip(((current_price - expected_lower) / (expected_upper - expected_lower)) * 100, 0, 100))
+        rr_ratio = float(reward_dist / risk_dist)
+        denom = max(expected_upper - expected_lower, 1e-5)
+        channel_pos = float(np.clip(((current_price - expected_lower) / denom) * 100.0, 0.0, 100.0))
 
         # 5) 전략 가이드 로직
         if risk_score >= 75:
@@ -253,7 +254,7 @@ try:
             risk_label = "🛡️ 안정 (횡보)"
             delta_color = "normal"
 
-        is_whipsaw_risk = abs(fpc_scores[2]) > 0.015
+        is_whipsaw_risk = bool(abs(fpc_scores[2]) > 0.015)
 
         # ==============================================================================
         # 8. 상단 핵심 지표 카드
@@ -316,14 +317,14 @@ try:
         st.markdown(html_content, unsafe_allow_html=True)
 
         # ==============================================================================
-        # 10. 차트 렌더링: 최근 2시간 궤적 + 향후 1시간 예상 변동 밴드
+        # 10. 차트 렌더링
         # ==============================================================================
         time_labels = [f"-{(23 - int(i)) * 5}분" for i in range(24)]
         time_labels[-1] = "현재"
 
         future_labels = ["현재", "+30분", "+60분"]
-        future_upper = [current_price, current_price + (expected_range_value * 0.7), expected_upper]
-        future_lower = [current_price, current_price - (expected_range_value * 0.7), expected_lower]
+        future_upper = [current_price, float(current_price + (expected_range_value * 0.7)), expected_upper]
+        future_lower = [current_price, float(current_price - (expected_range_value * 0.7)), expected_lower]
 
         if SYMBOL == "GLD":
             line_color, marker_color = "#fbbf24", "#d97706"
@@ -376,8 +377,7 @@ try:
             annotation_font=dict(size=10, color="#94a3b8")
         )
 
-        # X축 라벨 틱 간소화 (안전한 명시적 결합)
-        selected_past_ticks = [time_labels[idx] for idx in [0, 3, 6, 9, 12, 15, 18, 21, 23]]
+        selected_past_ticks = [str(time_labels[idx]) for idx in [0, 3, 6, 9, 12, 15, 18, 21, 23]]
         custom_ticks = selected_past_ticks + ["+30분", "+60분"]
 
         status_text = "실시간" if is_open else "직전 마감 기준"
@@ -415,8 +415,8 @@ try:
         with st.expander("모형 상태 및 FPCA 특징치 정보"):
             st.write(f"- **현재 2시간 실현 변동성 ($\ln RV_t$):** `{in_rv:.4f}`")
             st.write(f"- **예측 1시간 선행 RV ($\ln \widehat{{RV}}_{{t+1}}$):** `{pred_log_rv:.4f}` (연환산 환산치: `{np.sqrt(pred_rv * 252 * 6.5) * 100:.2f}%`)")
-            st.write(f"- **자산별 스케일 오프셋:** `+{target_info['offset']:.2f}` (보정 후 RV: `{adjusted_log_rv:.4f}`)")
-            st.write(f"- **FPCA 주성분 계수 (1~3):** `{fpc_scores[0]:.4f}, {fpc_scores[1]:.4f}, {fpc_scores[2]:.4f}`")
+            st.write(f"- **자산별 스케일 오프셋:** `+{offset_val:.2f}` (보정 후 RV: `{adjusted_log_rv:.4f}`)")
+            st.write(f"- **FPCA 주성분 계수 (1~3):** `{float(fpc_scores[0]):.4f}, {float(fpc_scores[1]):.4f}, {float(fpc_scores[2]):.4f}`")
             st.caption("시세 데이터는 60초 주기로 자동 캐싱 갱신됩니다.")
             
     else:
