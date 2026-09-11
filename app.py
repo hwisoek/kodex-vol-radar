@@ -7,6 +7,10 @@ import requests
 import xml.etree.ElementTree as ET
 import plotly.graph_objects as go
 from scipy.interpolate import make_interp_spline
+from streamlit_autorefresh import st_autorefresh
+
+# 60초(60,000ms)마다 페이지 전체를 백그라운드에서 자동 재실행
+st_autorefresh(interval=60 * 1000, key="vol_radar_refresh")
 
 # ==============================================================================
 # 1. 페이지 레이아웃 및 메타 설정
