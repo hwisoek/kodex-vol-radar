@@ -24,7 +24,7 @@ st.set_page_config(
 st_autorefresh(interval=60 * 1000, key="global_vol_radar_refresh")
 
 # ==============================================================================
-# 2. 사이드바: 모니터링 자산 선택 및 메타데이터
+# 2. 사이드바: 모니터링 자산 선택 및 메타데이터 (SLV 추가)
 # ==============================================================================
 st.sidebar.header("⚙️ 모니터링 자산 설정")
 
@@ -65,7 +65,15 @@ TICKER_MAP = {
         "symbol": "GLD",
         "currency": "$",
         "is_kr": False,
-        "offset": 1.85,
+        "offset": 1.85,  # 안전자산 저변동성 평준화 보정치
+        "tz": "America/New_York",
+        "market_name": "미국 뉴욕증권거래소 아카 (NYSE Arca)"
+    },
+    "SLV (iShares 글로벌 은 현물 ETF)": {
+        "symbol": "SLV",
+        "currency": "$",
+        "is_kr": False,
+        "offset": 1.35,  # 금보다 큰 고변동성 귀금속/산업재 보정치
         "tz": "America/New_York",
         "market_name": "미국 뉴욕증권거래소 아카 (NYSE Arca)"
     }
@@ -212,7 +220,7 @@ try:
         smoothed = spl(t_grid)
         
         centered = smoothed - mu_curve
-        fpc_scores = centered @ V_comp.T  # (3,)
+        fpc_scores = centered @ V_comp.T
         
         # 2) 기준 RV 및 1시간 선행 RV 예측
         in_log_ret = np.diff(np.log(prices))
@@ -228,8 +236,7 @@ try:
         raw_score = float(np.mean(rv_history <= adjusted_log_rv) * 100)
         risk_score = float(np.clip(raw_score, 0.0, 100.0))
         
-        # 4) [핵심] 단타 맞춤 가격 범위 산출 (향후 1시간 1-sigma 진폭)
-        # 1시간 표준편차(sigma) = sqrt(예측 RV)
+        # 4) 단타 맞춤 가격 범위 산출 (향후 1시간 1-sigma 진폭)
         pred_sigma_pct = np.sqrt(pred_rv)
         expected_range_value = current_price * pred_sigma_pct
         expected_upper = current_price + expected_range_value
@@ -255,8 +262,7 @@ try:
             risk_label = "🛡️ 안정 (저변동성/횡보)"
             delta_color = "normal"
 
-        # 6) FPC 3 기반 휩소(속임수 반전) 경보 판별
-        # FPC 3의 절댓값이 클수록 S자 곡선(급반전) 궤적이 강함
+        # 6) FPC 3 기반 휩소(속임수 반전) 경보
         is_whipsaw_risk = abs(fpc_scores[2]) > 0.015
 
         # ==============================================================================
@@ -284,7 +290,7 @@ try:
 
         st.markdown(f"""
             <div style="background-color: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; margin: 15px 0 25px 0;">
-                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; pb-3; padding-bottom: 12px; margin-bottom: 15px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 12px; margin-bottom: 15px;">
                     <div style="font-size: 18px; font-weight: 700; color: {strategy_color};">
                         {strategy_title}
                     </div>
@@ -318,13 +324,17 @@ try:
         time_labels = [f"-{(23 - i) * 5}분" for i in range(24)]
         time_labels[-1] = "현재"
 
-        # 향후 1시간 예상 구간 라벨
         future_labels = ["현재", "+30분", "+60분"]
         future_upper = [current_price, current_price + (expected_range_value * 0.7), expected_upper]
         future_lower = [current_price, current_price - (expected_range_value * 0.7), expected_lower]
 
-        line_color = "#f59e0b" if SYMBOL == "GLD" else "#38bdf8"
-        marker_color = "#d97706" if SYMBOL == "GLD" else "#0284c7"
+        # 종목별 컬러 테마 (금: 골드, 은: 실버, 기타: 블루)
+        if SYMBOL == "GLD":
+            line_color, marker_color = "#f59e0b", "#d97706"
+        elif SYMBOL == "SLV":
+            line_color, marker_color = "#cbd5e1", "#94a3b8"
+        else:
+            line_color, marker_color = "#38bdf8", "#0284c7"
 
         fig = go.Figure()
 
@@ -347,7 +357,7 @@ try:
             line=dict(color="#f87171", width=1.5, dash="dot")
         ))
 
-        # 3) 향후 1시간 하단 지지선 (음영 영역 채우기)
+        # 3) 향후 1시간 하단 지지선 (음영 영역)
         fig.add_trace(go.Scatter(
             x=future_labels,
             y=future_lower,
