@@ -160,20 +160,46 @@ except Exception as e:
     st.stop()
 
 # ==============================================================================
-# 6. 실시간 5분봉 시세 파이프라인
+# 6. 실시간 5분봉 수집 파이프라인 (미국 종목 백업 API 및 차단 방지 적용)
 # ==============================================================================
 @st.cache_data(ttl=60)
 def fetch_recent_5m_candles(symbol: str, is_kr: bool):
+    # 1) yfinance 기본 시도 (Custom Session 헤더 주입)
     try:
-        ticker = yf.Ticker(symbol)
-        df_yf = ticker.history(period="5d", interval="5m")
-        if df_yf is not None and len(df_yf) >= 24:
-            raw_vals = df_yf["Close"].dropna().values[-24:]
-            if len(raw_vals) == 24:
-                return np.array([float(x) for x in raw_vals], dtype=float)
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        })
+        ticker = yf.Ticker(symbol, session=session)
+        df_yf = ticker.history(period="5d", interval="5m", prepost=True)
+        if df_yf is not None and not df_yf.empty:
+            prices = df_yf["Close"].dropna().values
+            if len(prices) >= 24:
+                return np.array(prices[-24:], dtype=float)
     except Exception as e:
-        print(f"yfinance 수집 실패 ({symbol}): {e}")
+        print(f"yfinance 1차 실패 ({symbol}): {e}")
 
+    # 2) 미국 주식 백업: Yahoo Finance v8 차트 직접 REST 호출
+    if not is_kr:
+        try:
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=5m&range=5d&includePrePost=true"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            }
+            res = requests.get(url, headers=headers, timeout=6)
+            if res.status_code == 200:
+                data = res.json()
+                result = data.get("chart", {}).get("result", [])
+                if result:
+                    indicators = result[0].get("indicators", {}).get("quote", [{}])[0]
+                    closes = indicators.get("close", [])
+                    clean_closes = [c for c in closes if c is not None]
+                    if len(clean_closes) >= 24:
+                        return np.array(clean_closes[-24:], dtype=float)
+        except Exception as e:
+            print(f"Yahoo Direct API 실패 ({symbol}): {e}")
+
+    # 3) 한국 주식 백업: 네이버 차트 API
     if is_kr:
         try:
             url = "https://fchart.stock.naver.com/sise.nhn?symbol=069500&timeframe=minute&count=120&requestType=0"
@@ -185,9 +211,9 @@ def fetch_recent_5m_candles(symbol: str, is_kr: bool):
             if len(close_prices) >= 24:
                 return np.array(close_prices[-24:], dtype=float)
         except Exception as e:
-            raise ValueError(f"시세 수집 실패: {e}")
+            raise ValueError(f"네이버 차트 수집 실패: {e}")
 
-    raise ValueError(f"{symbol} 5분봉 표본 부족 (최소 24개 필요)")
+    raise ValueError(f"{symbol} 5분봉 표본 부족 또는 IP 차단 (최소 24개 필요)")
 
 # ==============================================================================
 # 7. 실시간 추론 및 단타 지표 산출
