@@ -117,6 +117,23 @@ TICKER_MAP = {
     "KLA 코퍼레이션 (KLAC)": {"symbol": "KLAC", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
 
     # --------------------------------------------------------------------------
+    # 6. 미국 빅테크 (M7) 및 AI·반도체 핵심주
+    # --------------------------------------------------------------------------
+    "애플 (AAPL)": {"symbol": "AAPL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "마이크로소프트 (MSFT)": {"symbol": "MSFT", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "엔비디아 (NVDA)": {"symbol": "NVDA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "알파벳 A (GOOGL)": {"symbol": "GOOGL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "아마존 (AMZN)": {"symbol": "AMZN", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "메타 (META)": {"symbol": "META", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "테슬라 (TSLA)": {"symbol": "TSLA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "브로드컴 (AVGO)": {"symbol": "AVGO", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "AMD (AMD)": {"symbol": "AMD", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "TSMC ADR (TSM)": {"symbol": "TSM", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "ASML ADR (ASML)": {"symbol": "ASML", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "마이크론 테크놀로지 (MU)": {"symbol": "MU", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "퀄컴 (QCOM)": {"symbol": "QCOM", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+
+    # --------------------------------------------------------------------------
     # 7. 미국 소프트웨어, AI, 플랫폼, 핀테크 (12개)
     # --------------------------------------------------------------------------
     "팔란티어 테크 (PLTR)": {"symbol": "PLTR", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
