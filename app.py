@@ -236,7 +236,6 @@ except Exception as e:
 
 @st.cache_data(ttl=60)
 def fetch_recent_5m_candles(symbol: str, is_kr: bool, naver_symbol: str = ""):
-    # 1차: yfinance
     try:
         session = requests.Session()
         session.headers.update({
@@ -252,11 +251,10 @@ def fetch_recent_5m_candles(symbol: str, is_kr: bool, naver_symbol: str = ""):
     except Exception as e:
         print(f"yfinance 1차 실패 ({symbol}): {e}")
 
-    # 2차: Yahoo Finance 직접 API
     if not is_kr:
         try:
             url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=5m&range=5d&includePrePost=true"
-            headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+            headers = {"User-Agent": "Mozilla/5.0"}
             res = requests.get(url, headers=headers, timeout=6)
             if res.status_code == 200:
                 data = res.json()
@@ -270,7 +268,6 @@ def fetch_recent_5m_candles(symbol: str, is_kr: bool, naver_symbol: str = ""):
         except Exception as e:
             print(f"Yahoo Direct API 실패 ({symbol}): {e}")
 
-    # 3차: 한국 네이버 금융
     if is_kr:
         try:
             if not naver_symbol:
@@ -299,16 +296,10 @@ def fetch_recent_5m_candles(symbol: str, is_kr: bool, naver_symbol: str = ""):
 # 7. 상세 트레이딩 전략
 # ==============================================================================
 
-def get_detailed_trading_strategy(risk_score, channel_pos, rr_ratio, is_whipsaw_risk, fpc_scores):
-    fpc_scores = np.asarray(fpc_scores, dtype=float).flatten()
-    if len(fpc_scores) < 3:
-        padded = np.zeros(3)
-        padded[:len(fpc_scores)] = fpc_scores
-        fpc_scores = padded
-
-    fpc1 = float(fpc_scores[0])
-    is_strong_trend_up = fpc1 > 0.005
-    is_strong_trend_down = fpc1 < -0.005
+def get_detailed_trading_strategy(risk_score, channel_pos, rr_ratio, is_whipsaw_risk, trend_intensity):
+    # 수정: 실제 trend_intensity 기반으로 트렌드 판별
+    is_strong_trend_up = trend_intensity > 0.3
+    is_strong_trend_down = trend_intensity < -0.3
 
     if risk_score >= 85.0:
         if is_whipsaw_risk:
@@ -426,31 +417,30 @@ try:
         pred_sigma_pct = float(np.sqrt(max(pred_rv, 0.0)))
         expected_range_value = float(current_price * pred_sigma_pct)
 
-        # 최근 2시간 궤적 내 가격 위치 (0% ~ 100%)
-        # 2시간 고점/저점을 기준으로 현재가의 실제 상대 위치 파악
         past_min = float(np.min(prices))
         past_max = float(np.max(prices))
         price_spread = max(past_max - past_min, 1e-5)
         raw_channel_pos = ((current_price - past_min) / price_spread) * 100.0
         channel_pos = float(np.clip(raw_channel_pos, 0.0, 100.0))
 
-        # 모멘텀(드리프트) 계수: 최근 추세(fpc_scores[0])를 기반으로 tanh 스케일링
-        # fpc1이 0.005 이상이면 유의미한 상승 기울기
-        trend_intensity = float(np.tanh(fpc_scores[0] / 0.008))
+        # ======================================================================
+        # [수정됨] 실질 수익률 기반 모멘텀 동적 측정 (손익비 고정 버그 해결)
+        # ======================================================================
+        recent_return = (current_price - prices[0]) / prices[0]
+        # 단기 변동성 기준 (약 0.5% 변동 시 매우 강한 모멘텀으로 인식하도록 스케일링)
+        trend_intensity = float(np.tanh(recent_return / 0.005))
         
-        # 1시간 뒤 기대 드리프트 금액 (변동폭의 최대 ±35% 한도로 부드럽게 반영)
+        # 1시간 뒤 기대 드리프트 금액 (방향성에 따라 + 또는 - 값을 가짐)
         drift_val = float(expected_range_value * 0.35 * trend_intensity)
 
-        # 예측 상/하단 타겟 (1시간 뒤 중심축이 drift_val 만큼 상향/하향 편향됨)
         expected_upper = float(current_price + drift_val + expected_range_value)
         expected_lower = float(current_price + drift_val - expected_range_value)
-        expected_mid = (expected_upper + expected_lower) / 2.0
-
-        # 보상(상방 목표까지 거리) vs 리스크(하방 손절선까지 거리)
+        
+        # 방향성에 기반한 1시간 목표 상방/하방 거리
         reward_dist = max(expected_upper - current_price, 1e-5)
         risk_dist = max(current_price - expected_lower, 1e-5)
-        
-        # 기대 손익비 계산 (상승 추세 시 1.0 초과, 하락 추세 시 1.0 미만)
+
+        # 기대 손익비 (RR) 계산
         rr_ratio = float(reward_dist / risk_dist)
 
         is_whipsaw_risk = bool(abs(float(fpc_scores[2])) > 0.015)
@@ -466,7 +456,7 @@ try:
             channel_pos=channel_pos,
             rr_ratio=rr_ratio,
             is_whipsaw_risk=is_whipsaw_risk,
-            fpc_scores=fpc_scores
+            trend_intensity=trend_intensity
         )
 
         if risk_score >= 65:
@@ -488,9 +478,10 @@ try:
         curr_price_str = f"{int(round(current_price)):,}원" if CURRENCY == "원" else f"${current_price:.2f}"
         col3.metric("현재 체결가", curr_price_str)
 
+        # [수정됨] 직관적인 표기법 적용 (보상 : 리스크)
         col4.metric(
-            "기대 손익비 (R:R)",
-            f"1 : {rr_ratio:.2f}",
+            "기대 손익비 (Reward:Risk)",
+            f"{rr_ratio:.2f} : 1",
             delta="균형" if 0.95 <= rr_ratio <= 1.05 else ("유리" if rr_ratio > 1.05 else "불리")
         )
 
@@ -558,7 +549,6 @@ try:
 
         future_labels = ["현재", "+30분", "+60분"]
         
-        # 미래 콘 밴드도 30분 시점에 드리프트의 절반을 반영하여 자연스럽게 연결
         future_upper = [
             current_price,
             float(current_price + (drift_val * 0.5) + (expected_range_value * 0.7)),
