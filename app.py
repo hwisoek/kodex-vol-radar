@@ -24,7 +24,7 @@ st.set_page_config(
 st_autorefresh(interval=60 * 1000, key="global_vol_radar_refresh")
 
 # ==============================================================================
-# 2. 사이드바: 자산 선택 및 메타데이터
+# 2. 사이드바: 모니터링 자산 선택 및 금(GLD) 포함 메타데이터
 # ==============================================================================
 st.sidebar.header("⚙️ 모니터링 자산 설정")
 
@@ -60,6 +60,14 @@ TICKER_MAP = {
         "offset": 1.05,
         "tz": "America/New_York",
         "market_name": "미국 나스닥 (NASDAQ)"
+    },
+    "GLD (SPDR 글로벌 금 현물 ETF)": {
+        "symbol": "GLD",
+        "currency": "$",
+        "is_kr": False,
+        "offset": 1.85,  # 안전자산 특유의 저변동성 평준화 보정치
+        "tz": "America/New_York",
+        "market_name": "미국 뉴욕증권거래소 아카 (NYSE Arca)"
     }
 }
 
@@ -85,13 +93,11 @@ def check_market_status(target_tz_str: str, is_kr: bool):
     is_weekend = weekday >= 5
 
     if is_kr:
-        # 한국 정규장: 09:00 ~ 15:30 KST
         open_time = time(9, 0)
         close_time = time(15, 30)
         is_open = (not is_weekend) and (open_time <= now_target.time() <= close_time)
         hours_str = "정규장 09:00 ~ 15:30 (KST)"
     else:
-        # 미국 정규장: 09:30 ~ 16:00 EST/EDT (서머타임 자동 계산)
         open_time = time(9, 30)
         close_time = time(16, 0)
         is_open = (not is_weekend) and (open_time <= now_target.time() <= close_time)
@@ -102,11 +108,10 @@ def check_market_status(target_tz_str: str, is_kr: bool):
 is_open, current_kst_str, hours_desc = check_market_status(target_info["tz"], target_info["is_kr"])
 
 # ==============================================================================
-# 4. 헤더 및 대형 장 운영 상태 배너 (크게 표시)
+# 4. 헤더 및 대형 장 운영 상태 배너
 # ==============================================================================
 st.title("⚡ 글로벌 실시간 장중 변동성 위험 레이더")
 
-# 큼직한 상태 배너
 if is_open:
     st.markdown(f"""
         <div style="background-color: #064e3b; border: 2px solid #10b981; border-radius: 12px; padding: 18px 24px; margin-bottom: 20px;">
@@ -217,7 +222,7 @@ try:
         pred_log_rv = float(model.predict(X_scaled)[0])
         pred_rv = float(np.exp(pred_log_rv))
         
-        # 자산별 내재 변동성 오프셋 보정
+        # 금(GLD) 및 미장 자산별 고유 오프셋 보정
         adjusted_log_rv = pred_log_rv + target_info["offset"]
         raw_score = float(np.mean(rv_history <= adjusted_log_rv) * 100)
         risk_score = float(np.clip(raw_score, 0.0, 100.0))
@@ -235,7 +240,6 @@ try:
             risk_label = "🛡️ 안정 (저변동성 국면)"
             delta_color = "normal"
 
-        # 지표 카드
         col1, col2, col3 = st.columns(3)
         col1.metric("장중 변동성 위험 지수", f"{risk_score:.1f}점", delta=risk_label, delta_color=delta_color)
         col2.metric("예측 실현변동성 ($\widehat{RV}_{t+1}$)", f"{pred_rv:.6f}")
@@ -243,9 +247,12 @@ try:
         curr_price_str = f"{int(prices[-1]):,}원" if CURRENCY == "원" else f"${prices[-1]:.2f}"
         col3.metric(f"{selected_name.split(' ')[0]} 종가", curr_price_str)
 
-        # 24개 5분봉 궤적 차트
         time_labels = [f"-{(23 - i) * 5}분" for i in range(24)]
         time_labels[-1] = "마지막 체결"
+
+        # 금(GLD)은 골드 색상(#f59e0b), 기타는 블루(#38bdf8)
+        line_color = "#f59e0b" if SYMBOL == "GLD" else "#38bdf8"
+        marker_color = "#d97706" if SYMBOL == "GLD" else "#0284c7"
 
         fig = go.Figure()
         fig.add_trace(go.Scatter(
@@ -253,8 +260,8 @@ try:
             y=prices,
             mode="lines+markers",
             name=SYMBOL,
-            line=dict(color="#38bdf8", width=2.5),
-            marker=dict(size=6, color="#0284c7")
+            line=dict(color=line_color, width=2.5),
+            marker=dict(size=6, color=marker_color)
         ))
         
         status_text = "실시간" if is_open else "직전 마감 기준"
@@ -270,13 +277,12 @@ try:
         
         st.plotly_chart(fig, use_container_width=True)
 
-        # 세부 정보
         with st.expander("모형 상태 및 입력 특징치 세부정보"):
             st.write(f"- **현재 2시간 기준 RV ($\ln RV_t$):** `{in_rv:.4f}`")
             st.write(f"- **예측 1시간 선행 RV ($\ln \widehat{{RV}}_{{t+1}}$):** `{pred_log_rv:.4f}`")
             st.write(f"- **자산별 스케일 보정치 (Offset):** `+{target_info['offset']:.2f}` (보정치 적용 RV: `{adjusted_log_rv:.4f}`)")
             st.write(f"- **FPCA 주성분 점수 (FPC 1, 2, 3):** `{fpc_scores[0]:.4f}, {fpc_scores[1]:.4f}, {fpc_scores[2]:.4f}`")
-            st.caption("시세 데이터는 60초 주기로 자동 갱신됩니다.")
+            st.caption("데이터는 60초 주기로 자동 갱신됩니다.")
             
     else:
         st.warning(f"데이터 표본 부족 (현재 확보: {len(prices)}개 / 필요: 24개). 장 시작 직후이거나 데이터 수신 대기 중입니다.")
