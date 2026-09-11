@@ -37,71 +37,11 @@ st.sidebar.markdown("### ⚙️ 자산 모니터링")
 
 TICKER_MAP = {
     # --------------------------------------------------------------------------
-    # 1. 한국 시장 대표 지수 및 섹터 ETF (12개)
+    # 1. 한국 시장 대표 지수 및 섹터 ETF
     # --------------------------------------------------------------------------
     "KODEX 200 (코스피 200)": {"symbol": "069500.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "069500"},
     "KODEX 코스닥150": {"symbol": "229200.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "229200"},
     "KODEX 레버리지 (코스피 2배)": {"symbol": "122630.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "122630"},
-    "KODEX 200선물인버스2X (곱버스)": {"symbol": "252670.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "252670"},
-    "KODEX 코스닥150레버리지": {"symbol": "233740.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "233740"},
-    "KODEX 코스닥150선물인버스": {"symbol": "251340.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "251340"},
-    "TIGER 2차전지테마": {"symbol": "305540.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "305540"},
-    "TIGER 반도체 TOP10": {"symbol": "396500.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "396500"},
-    "KODEX 반도체": {"symbol": "091160.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "091160"},
-    "TIGER 미국필라델피아반도체나스닥": {"symbol": "381180.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "381180"},
-    "TIGER 미국나스닥100": {"symbol": "133690.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "133690"},
-    "ACE 미국S&P500": {"symbol": "360200.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "360200"},
-
-    # --------------------------------------------------------------------------
-    # 2. 한국 대형주 & 단타 인기 종목 (18개)
-    # --------------------------------------------------------------------------
-    "삼성전자 (005930)": {"symbol": "005930.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "005930"},
-    "SK하이닉스 (000660)": {"symbol": "000660.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "000660"},
-    "LG에너지솔루션 (373220)": {"symbol": "373220.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "373220"},
-    "삼성바이오로직스 (207940)": {"symbol": "207940.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "207940"},
-    "현대차 (005380)": {"symbol": "005380.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "005380"},
-    "기아 (000270)": {"symbol": "000270.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "000270"},
-    "셀트리온 (068270)": {"symbol": "068270.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "068270"},
-    "POSCO홀딩스 (005490)": {"symbol": "005490.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "005490"},
-    "NAVER (네이버 035420)": {"symbol": "035420.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "035420"},
-    "카카오 (035720)": {"symbol": "035720.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "035720"},
-    "에코프로비엠 (247540)": {"symbol": "247540.KQ", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "코스닥 (KOSDAQ)", "naver_symbol": "247540"},
-    "에코프로 (086520)": {"symbol": "086520.KQ", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "코스닥 (KOSDAQ)", "naver_symbol": "086520"},
-    "알테오젠 (196170)": {"symbol": "196170.KQ", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "코스닥 (KOSDAQ)", "naver_symbol": "196170"},
-    "HLB (028300)": {"symbol": "028300.KQ", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "코스닥 (KOSDAQ)", "naver_symbol": "028300"},
-    "한미반도체 (042700)": {"symbol": "042700.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "042700"},
-    "삼천당제약 (000250)": {"symbol": "000250.KQ", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "코스닥 (KOSDAQ)", "naver_symbol": "000250"},
-    "두산에너빌리티 (034020)": {"symbol": "034020.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "034020"},
-    "한화에어로스페이스 (012450)": {"symbol": "012450.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "012450"},
-
-    # --------------------------------------------------------------------------
-    # 3. 미국 지수 및 섹터 대표 ETF (10개)
-    # --------------------------------------------------------------------------
-    "SPY (미국 S&P 500 ETF)": {"symbol": "SPY", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
-    "QQQ (미국 나스닥 100 ETF)": {"symbol": "QQQ", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "DIA (다우존스 30 ETF)": {"symbol": "DIA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
-    "IWM (러셀 2000 중소형 ETF)": {"symbol": "IWM", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-    "SOXX (필라델피아 반도체 ETF)": {"symbol": "SOXX", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "SMH (반호크 반도체 ETF)": {"symbol": "SMH", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "XLK (미국 기술주 섹터 ETF)": {"symbol": "XLK", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-    "XLF (미국 금융 섹터 ETF)": {"symbol": "XLF", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-    "XLE (미국 에너지 섹터 ETF)": {"symbol": "XLE", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-    "ARKK (아크 혁신 ETF)": {"symbol": "ARKK", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-
-    # --------------------------------------------------------------------------
-    # 4. 미국 초고변동성 레버리지 / 인버스 ETF (16개)
-    # --------------------------------------------------------------------------
-    "TQQQ (나스닥 3배 레버리지)": {"symbol": "TQQQ", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "SQQQ (나스닥 -3배 인버스)": {"symbol": "SQQQ", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "SOXL (반도체 3배 레버리지)": {"symbol": "SOXL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-    "SOXS (반도체 -3배 인버스)": {"symbol": "SOXS", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-    "UPRO (S&P 500 3배 레버리지)": {"symbol": "UPRO", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-    "SPXU (S&P 500 -3배 인버스)": {"symbol": "SPXU", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-    "TNA (러셀 2000 3배 레버리지)": {"symbol": "TNA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-    "TZA (러셀 2000 -3배 인버스)": {"symbol": "TZA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-    "NVDL (엔비디아 2배 레버리지)": {"symbol": "NVDL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "TSLL (테슬라 2배 레버리지)": {"symbol": "TSLL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "TSLS (테슬라 -1배 인버스)": {"symbol": "TSLS", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
     "CONL (코인베이스 2배 레버리지)": {"symbol": "CONL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
     "FNGU (FAANG+ 테크 3배 레버리지)": {"symbol": "FNGU", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
     "FNGD (FAANG+ 테크 -3배 인버스)": {"symbol": "FNGD", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
@@ -109,15 +49,16 @@ TICKER_MAP = {
     "LABD (바이오 -3배 인버스)": {"symbol": "LABD", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
 
     # --------------------------------------------------------------------------
-    # 5. 원자재, 채권, 안전자산 ETF (4개)
+    # 2. 대표 지수, 원자재, 채권 ETF
     # --------------------------------------------------------------------------
+    "SPY (미국 S&P 500 ETF)": {"symbol": "SPY", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
     "GLD (SPDR 글로벌 금 ETF)": {"symbol": "GLD", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
     "SLV (iShares 글로벌 은 ETF)": {"symbol": "SLV", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
     "마벨 테크놀로지 (MRVL)": {"symbol": "MRVL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
     "KLA 코퍼레이션 (KLAC)": {"symbol": "KLAC", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
 
     # --------------------------------------------------------------------------
-    # 6. 미국 빅테크 (M7) 및 AI·반도체 핵심주
+    # 3. 미국 빅테크 (M7) 및 반도체
     # --------------------------------------------------------------------------
     "애플 (AAPL)": {"symbol": "AAPL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
     "마이크로소프트 (MSFT)": {"symbol": "MSFT", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
@@ -134,7 +75,7 @@ TICKER_MAP = {
     "퀄컴 (QCOM)": {"symbol": "QCOM", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
 
     # --------------------------------------------------------------------------
-    # 7. 미국 소프트웨어, AI, 플랫폼, 핀테크 (12개)
+    # 4. 미국 플랫폼, 소프트웨어, 핀테크
     # --------------------------------------------------------------------------
     "팔란티어 테크 (PLTR)": {"symbol": "PLTR", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
     "코인베이스 (COIN)": {"symbol": "COIN", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
@@ -150,7 +91,7 @@ TICKER_MAP = {
     "마이크로스트래티지 (MSTR)": {"symbol": "MSTR", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
 
     # --------------------------------------------------------------------------
-    # 8. 전통 우량주, 바이오, 금융, 소비재 (12개)
+    # 5. 전통 우량주, 바이오, 금융, 소비재
     # --------------------------------------------------------------------------
     "일라이 릴리 (LLY)": {"symbol": "LLY", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
     "노보 노디스크 ADR (NVO)": {"symbol": "NVO", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
@@ -166,6 +107,7 @@ TICKER_MAP = {
     "모더나 (MRNA)": {"symbol": "MRNA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"}
 }
 
+# 기본 선택값에 존재하는 종목 설정 (SPY가 누락되지 않도록 매핑에 추가 완료)
 selected_names = st.sidebar.multiselect(
     "모니터링 자산 선택 (최대 3개)",
     options=list(TICKER_MAP.keys()),
@@ -203,7 +145,6 @@ def check_market_status(target_tz_str: str, is_kr: bool):
         open_time = time(9, 30)
         close_time = time(16, 0)
         is_open = not is_weekend and open_time <= now_target.time() <= close_time
-        # 서머타임(EDT/EST) 자동 감지
         tz_abbr = now_target.strftime("%Z")
         hours_str = f"현지 09:30 ~ 16:00 {tz_abbr}"
         time_display_str = (
@@ -377,7 +318,7 @@ def get_detailed_trading_strategy(risk_score, channel_pos, rr_ratio, is_whipsaw_
 st.markdown("## 🎯 글로벌 변동성 레이더 & 단타 트레이딩 가이드")
 
 # ------------------------------------------------------------------------------
-# 7-1. 자산별 지표 일괄 계산 (기존 연산 재활용)
+# 7-1. 자산별 지표 일괄 계산
 # ------------------------------------------------------------------------------
 calculated_assets = []
 
@@ -390,6 +331,7 @@ for asset_name in selected_names:
     try:
         prices = fetch_recent_5m_candles(symbol, target_info["is_kr"], target_info.get("naver_symbol", ""))
         if len(prices) != 24:
+            st.warning(f"{asset_name}: 데이터 표본 부족 (확보: {len(prices)}개 / 필요: 24개)")
             continue
 
         current_price = float(prices[-1])
@@ -484,7 +426,6 @@ for asset_name in selected_names:
 # 7-2. 급변동 실시간 랭킹 (Top Volatility Ranking)
 # ------------------------------------------------------------------------------
 if calculated_assets:
-    # risk_score(변동성 위험 지수) 기준 내림차순 정렬
     ranked_list = sorted(calculated_assets, key=lambda x: x["risk_score"], reverse=True)
 
     with st.expander("⚡ 실시간 급변동 랭킹 (변동성 위험 지수 순)", expanded=True):
@@ -657,8 +598,3 @@ for tab, data in zip(tabs, calculated_assets):
             st.write(f"- **동적 레벨 보정치 (Local Offset):** `{data['dynamic_asset_offset']:+.4f}` (Raw 모델 예측: `{data['raw_pred_log_rv']:.4f}`)")
             st.write(f"- **FPCA 주성분 계수 (1~3):** `{float(data['fpc_scores'][0]):.4f}, {float(data['fpc_scores'][1]):.4f}, {float(data['fpc_scores'][2]):.4f}`")
             st.caption("시세 데이터는 60초 주기로 자동 캐싱 갱신됩니다.")
-            else:
-                st.warning(f"{asset_name}: 데이터 표본 부족 (확보: {len(prices)}개 / 필요: 24개)")
-
-        except Exception as e:
-            st.error(f"{asset_name} 데이터 처리 중 오류 발생: {e}")
