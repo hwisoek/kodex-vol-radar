@@ -84,15 +84,13 @@ target_info = TICKER_MAP[selected_name]
 SYMBOL = target_info["symbol"]
 CURRENCY = target_info["currency"]
 
-# 사이드바 여백 활용: 기본 거래소 정보 카드
-st.sidebar.markdown(f"""
-    <div style="background-color: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 12px; margin-top: 15px;">
-        <div style="font-size: 11px; color: #94a3b8;">상장 거래소</div>
-        <div style="font-size: 13px; font-weight: 600; color: #e2e8f0; margin-bottom: 8px;">{target_info['market_name']}</div>
-        <div style="font-size: 11px; color: #94a3b8;">표시 심볼 / 통화</div>
-        <div style="font-size: 13px; font-weight: 600; color: #38bdf8;">{SYMBOL} ({CURRENCY})</div>
-    </div>
-""", unsafe_allow_html=True)
+sidebar_card_html = f"""<div style="background-color: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 12px; margin-top: 15px;">
+<div style="font-size: 11px; color: #94a3b8;">상장 거래소</div>
+<div style="font-size: 13px; font-weight: 600; color: #e2e8f0; margin-bottom: 8px;">{target_info['market_name']}</div>
+<div style="font-size: 11px; color: #94a3b8;">표시 심볼 / 통화</div>
+<div style="font-size: 13px; font-weight: 600; color: #38bdf8;">{SYMBOL} ({CURRENCY})</div>
+</div>"""
+st.sidebar.markdown(sidebar_card_html, unsafe_allow_html=True)
 
 # ==============================================================================
 # 3. 장중 / 장마감 실시간 상태 판별 함수
@@ -127,23 +125,21 @@ is_open, current_kst_str, hours_desc = check_market_status(target_info["tz"], ta
 # ==============================================================================
 st.markdown("## 🎯 글로벌 변동성 레이더 & 단타 트레이딩 가이드")
 
-# 두꺼운 대형 배너 대신 화면을 절약하는 슬림 인라인 바
 status_bg = "#064e3b" if is_open else "#450a0a"
 status_border = "#10b981" if is_open else "#ef4444"
 status_title = "🟢 [정규장 운영 중 - LIVE]" if is_open else "🔴 [정규장 마감 - CLOSED]"
 status_sub = f"{target_info['market_name']} 실시간 체결" if is_open else f"{target_info['market_name']} 마감 데이터 고정"
 
-st.markdown(f"""
-    <div style="background-color: {status_bg}; border-left: 4px solid {status_border}; border-radius: 6px; padding: 8px 14px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center;">
-        <div>
-            <span style="font-size: 14px; font-weight: 700; color: #ffffff;">{status_title}</span>
-            <span style="font-size: 12px; color: #e2e8f0; margin-left: 10px;">{status_sub}</span>
-        </div>
-        <div style="font-size: 11px; color: #cbd5e1;">
-            기준시각: <b>{current_kst_str}</b> | 운영: {hours_desc}
-        </div>
-    </div>
-""", unsafe_allow_html=True)
+status_banner_html = f"""<div style="background-color: {status_bg}; border-left: 4px solid {status_border}; border-radius: 6px; padding: 8px 14px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center;">
+<div>
+<span style="font-size: 14px; font-weight: 700; color: #ffffff;">{status_title}</span>
+<span style="font-size: 12px; color: #e2e8f0; margin-left: 10px;">{status_sub}</span>
+</div>
+<div style="font-size: 11px; color: #cbd5e1;">
+기준시각: <b>{current_kst_str}</b> | 운영: {hours_desc}
+</div>
+</div>"""
+st.markdown(status_banner_html, unsafe_allow_html=True)
 
 # ==============================================================================
 # 5. 사전 학습 모델 및 고유함수 축 로드
@@ -283,48 +279,44 @@ try:
             '<span style="color: #10b981; font-weight: bold;">✅ 양호 (추세 연속 안정)</span>'
         )
 
-        st.markdown(f"""
-            <div style="background-color: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 16px 20px; margin: 12px 0 20px 0;">
-                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 14px;">
-                    <div style="font-size: 16px; font-weight: 700; color: {strategy_color};">{strategy_title}</div>
-                    <div style="font-size: 12px; color: #94a3b8;">휩소 리스크: {whipsaw_badge}</div>
-                </div>
-                
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 14px;">
-                    <div style="background-color: #0f172a; padding: 10px 14px; border-radius: 6px; border-left: 3px solid #ef4444;">
-                        <span style="font-size: 11px; color: #94a3b8;">단기 저항 / 1차 목표가</span>
-                        <div style="font-size: 18px; font-weight: bold; color: #f87171; margin-top: 2px;">{upper_str}</div>
-                    </div>
-                    <div style="background-color: #0f172a; padding: 10px 14px; border-radius: 6px; border-left: 3px solid #38bdf8;">
-                        <span style="font-size: 11px; color: #94a3b8;">예상 1시간 진폭</span>
-                        <div style="font-size: 18px; font-weight: bold; color: #38bdf8; margin-top: 2px;">±{range_str}</div>
-                    </div>
-                    <div style="background-color: #0f172a; padding: 10px 14px; border-radius: 6px; border-left: 3px solid #10b981;">
-                        <span style="font-size: 11px; color: #94a3b8;">단기 지지 / 손절 기준선</span>
-                        <div style="font-size: 18px; font-weight: bold; color: #34d399; margin-top: 2px;">{lower_str}</div>
-                    </div>
-                </div>
+        html_content = f"""<div style="background-color: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 16px 20px; margin: 12px 0 20px 0;">
+<div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 14px;">
+<div style="font-size: 16px; font-weight: 700; color: {strategy_color};">{strategy_title}</div>
+<div style="font-size: 12px; color: #94a3b8;">휩소 리스크: {whipsaw_badge}</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 14px;">
+<div style="background-color: #0f172a; padding: 10px 14px; border-radius: 6px; border-left: 3px solid #ef4444;">
+<span style="font-size: 11px; color: #94a3b8;">단기 저항 / 1차 목표가</span>
+<div style="font-size: 18px; font-weight: bold; color: #f87171; margin-top: 2px;">{upper_str}</div>
+</div>
+<div style="background-color: #0f172a; padding: 10px 14px; border-radius: 6px; border-left: 3px solid #38bdf8;">
+<span style="font-size: 11px; color: #94a3b8;">예상 1시간 진폭</span>
+<div style="font-size: 18px; font-weight: bold; color: #38bdf8; margin-top: 2px;">±{range_str}</div>
+</div>
+<div style="background-color: #0f172a; padding: 10px 14px; border-radius: 6px; border-left: 3px solid #10b981;">
+<span style="font-size: 11px; color: #94a3b8;">단기 지지 / 손절 기준선</span>
+<div style="font-size: 18px; font-weight: bold; color: #34d399; margin-top: 2px;">{lower_str}</div>
+</div>
+</div>
+<div style="background-color: #0f172a; padding: 10px 14px; border-radius: 6px; margin-bottom: 10px;">
+<div style="display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; margin-bottom: 4px;">
+<span>손절선 ({lower_str})</span>
+<span style="color: #38bdf8; font-weight: 600;">현재 채널 위치: {channel_pos:.1f}%</span>
+<span>목표가 ({upper_str})</span>
+</div>
+<div style="width: 100%; background-color: #334155; border-radius: 4px; height: 8px; overflow: hidden;">
+<div style="width: {channel_pos}%; background: linear-gradient(90deg, #10b981 0%, #38bdf8 50%, #f87171 100%); height: 100%;"></div>
+</div>
+</div>
+<div style="font-size: 12px; color: #cbd5e1; line-height: 1.5; background-color: #0f172a; padding: 8px 12px; border-radius: 6px;">
+💡 <b>행동 가이드:</b> {strategy_desc}
+</div>
+</div>"""
 
-                <!-- 지지/저항 밴드 내 현재가 위치 시각화 게이지 -->
-                <div style="background-color: #0f172a; padding: 10px 14px; border-radius: 6px; margin-bottom: 10px;">
-                    <div style="display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; margin-bottom: 4px;">
-                        <span>손절선 ({lower_str})</span>
-                        <span style="color: #38bdf8; font-weight: 600;">현재 채널 위치: {channel_pos:.1f}%</span>
-                        <span>목표가 ({upper_str})</span>
-                    </div>
-                    <div style="width: 100%; background-color: #334155; border-radius: 4px; height: 8px; overflow: hidden;">
-                        <div style="width: {channel_pos}%; background: linear-gradient(90deg, #10b981 0%, #38bdf8 50%, #f87171 100%); height: 100%;"></div>
-                    </div>
-                </div>
-
-                <div style="font-size: 12px; color: #cbd5e1; line-height: 1.5; background-color: #0f172a; padding: 8px 12px; border-radius: 6px;">
-                    💡 <b>행동 가이드:</b> {strategy_desc}
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
+        st.markdown(html_content, unsafe_allow_html=True)
 
         # ==============================================================================
-        # 10. 차트 렌더링: 가독성 강화 및 그리드/예측 밴드 정돈
+        # 10. 차트 렌더링: 최근 2시간 궤적 + 향후 1시간 예상 변동 밴드
         # ==============================================================================
         time_labels = [f"-{(23 - i) * 5}분" for i in range(24)]
         time_labels[-1] = "현재"
@@ -352,7 +344,7 @@ try:
             marker=dict(size=5, color=marker_color)
         ))
 
-        # 2) 예측 하단 기준선 (투명 처리)
+        # 2) 예측 하단 기준선
         fig.add_trace(go.Scatter(
             x=future_labels,
             y=future_lower,
@@ -362,7 +354,7 @@ try:
             showlegend=True
         ))
 
-        # 3) 예측 상단선 및 내부 반투명 음영 밴드 (fill='tonexty')
+        # 3) 예측 상단선 및 내부 반투명 음영 밴드
         fig.add_trace(go.Scatter(
             x=future_labels,
             y=future_upper,
