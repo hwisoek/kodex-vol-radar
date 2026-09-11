@@ -371,24 +371,158 @@ def get_detailed_trading_strategy(risk_score, channel_pos, rr_ratio, is_whipsaw_
 
 
 # ==============================================================================
-# 7. 메인 화면 렌더링 (멀티 탭 구조)
+# 7. 데이터 산출 및 메인 화면 렌더링
 # ==============================================================================
 
 st.markdown("## 🎯 글로벌 변동성 레이더 & 단타 트레이딩 가이드")
 
-tabs = st.tabs([f"📌 {name.split(' (')[0]}" for name in selected_names])
+# ------------------------------------------------------------------------------
+# 7-1. 자산별 지표 일괄 계산 (기존 연산 재활용)
+# ------------------------------------------------------------------------------
+calculated_assets = []
 
-for tab, asset_name in zip(tabs, selected_names):
+for asset_name in selected_names:
+    target_info = TICKER_MAP[asset_name]
+    symbol = str(target_info["symbol"])
+    currency = str(target_info["currency"])
+    is_open, time_display_str, hours_desc = check_market_status(target_info["tz"], target_info["is_kr"])
+
+    try:
+        prices = fetch_recent_5m_candles(symbol, target_info["is_kr"], target_info.get("naver_symbol", ""))
+        if len(prices) != 24:
+            continue
+
+        current_price = float(prices[-1])
+        log_prices = np.log(prices.astype(float))
+        cidr = log_prices - log_prices[0]
+
+        spl = make_interp_spline(t_grid, cidr, k=3)
+        smoothed = spl(t_grid)
+        centered = smoothed - mu_curve
+        fpc_scores = np.asarray(centered @ V_comp.T, dtype=float).flatten()
+
+        if len(fpc_scores) < 3:
+            padded = np.zeros(3)
+            padded[:len(fpc_scores)] = fpc_scores
+            fpc_scores = padded
+
+        in_log_ret = np.diff(log_prices)
+        sum_sq = float(np.sum(in_log_ret ** 2))
+        in_rv = float(np.log(sum_sq + 1e-8))
+
+        feat_list = [in_rv] + [float(val) for val in fpc_scores]
+        X = np.array(feat_list, dtype=float).reshape(1, -1)
+        X_scaled = scaler.transform(X)
+
+        raw_pred_log_rv = float(model.predict(X_scaled)[0])
+
+        hist_median = float(np.median(rv_history))
+        dynamic_asset_offset = float(np.clip(in_rv - hist_median, -1.5, 1.5))
+        adjusted_log_rv = float(raw_pred_log_rv + (dynamic_asset_offset * 0.4))
+        pred_rv = float(np.exp(adjusted_log_rv))
+
+        raw_score = float(np.mean(rv_history <= adjusted_log_rv) * 100.0)
+        risk_score = float(np.clip(raw_score, 0.0, 100.0))
+
+        pred_sigma_pct = float(np.sqrt(max(pred_rv, 0.0)))
+        expected_range_value = float(current_price * pred_sigma_pct)
+
+        past_min = float(np.min(prices))
+        past_max = float(np.max(prices))
+        price_spread = max(past_max - past_min, 1e-5)
+        channel_pos = float(np.clip(((current_price - past_min) / price_spread) * 100.0, 0.0, 100.0))
+
+        recent_return = (current_price - prices[0]) / prices[0]
+        trend_intensity = float(np.tanh(recent_return / 0.005))
+        drift_val = float(expected_range_value * 0.15 * trend_intensity)
+
+        expected_upper = float(current_price + drift_val + expected_range_value)
+        expected_lower = float(current_price + drift_val - expected_range_value)
+
+        reward_dist = max(expected_upper - current_price, 1e-5)
+        risk_dist = max(current_price - expected_lower, 1e-5)
+        rr_ratio = float(reward_dist / risk_dist)
+        is_whipsaw_risk = bool(abs(float(fpc_scores[2])) > 0.015)
+
+        strategy_title, strategy_color, strategy_desc, risk_label = get_detailed_trading_strategy(
+            risk_score, channel_pos, rr_ratio, is_whipsaw_risk, trend_intensity
+        )
+
+        calculated_assets.append({
+            "asset_name": asset_name,
+            "target_info": target_info,
+            "is_open": is_open,
+            "time_display_str": time_display_str,
+            "hours_desc": hours_desc,
+            "prices": prices,
+            "current_price": current_price,
+            "risk_score": risk_score,
+            "pred_sigma_pct": pred_sigma_pct,
+            "expected_range_value": expected_range_value,
+            "expected_upper": expected_upper,
+            "expected_lower": expected_lower,
+            "channel_pos": channel_pos,
+            "drift_val": drift_val,
+            "rr_ratio": rr_ratio,
+            "is_whipsaw_risk": is_whipsaw_risk,
+            "strategy_title": strategy_title,
+            "strategy_color": strategy_color,
+            "strategy_desc": strategy_desc,
+            "risk_label": risk_label,
+            "in_rv": in_rv,
+            "adjusted_log_rv": adjusted_log_rv,
+            "pred_rv": pred_rv,
+            "dynamic_asset_offset": dynamic_asset_offset,
+            "raw_pred_log_rv": raw_pred_log_rv,
+            "fpc_scores": fpc_scores
+        })
+
+    except Exception as e:
+        st.error(f"{asset_name} 연산 실패: {e}")
+
+# ------------------------------------------------------------------------------
+# 7-2. 급변동 실시간 랭킹 (Top Volatility Ranking)
+# ------------------------------------------------------------------------------
+if calculated_assets:
+    # risk_score(변동성 위험 지수) 기준 내림차순 정렬
+    ranked_list = sorted(calculated_assets, key=lambda x: x["risk_score"], reverse=True)
+
+    with st.expander("⚡ 실시간 급변동 랭킹 (변동성 위험 지수 순)", expanded=True):
+        cols = st.columns(len(ranked_list))
+        medals = ["🥇", "🥈", "🥉"]
+
+        for idx, item in enumerate(ranked_list):
+            rank_icon = medals[idx] if idx < len(medals) else f"{idx+1}위"
+            with cols[idx]:
+                st.markdown(f"""
+                <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-top: 4px solid {item['strategy_color']}; border-radius: 8px; padding: 10px 14px;">
+                    <div style="font-size: 13px; font-weight: 700; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        {rank_icon} {item['asset_name'].split(' (')[0]}
+                    </div>
+                    <div style="font-size: 22px; font-weight: 800; color: {item['strategy_color']}; margin: 2px 0;">
+                        {item['risk_score']:.1f}<span style="font-size: 12px; font-weight: 600; color: #64748b;">점</span>
+                    </div>
+                    <div style="font-size: 11px; color: #475569; line-height: 1.5;">
+                        예상 진폭: <b>±{item['pred_sigma_pct']*100:.2f}%</b><br>
+                        상태: <b>{item['risk_label']}</b>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+# ------------------------------------------------------------------------------
+# 7-3. 개별 탭 상세 분석 렌더링
+# ------------------------------------------------------------------------------
+tabs = st.tabs([f"📌 {d['asset_name'].split(' (')[0]}" for d in calculated_assets])
+
+for tab, data in zip(tabs, calculated_assets):
     with tab:
-        target_info = TICKER_MAP[asset_name]
+        asset_name = data["asset_name"]
+        target_info = data["target_info"]
         SYMBOL = str(target_info["symbol"])
         CURRENCY = str(target_info["currency"])
-
-        # 기존: is_open, current_kst_str, hours_desc = check_market_status(...)
-        is_open, time_display_str, hours_desc = check_market_status(
-            target_info["tz"],
-            target_info["is_kr"]
-        )
+        is_open = data["is_open"]
 
         status_bg = "#ecfdf5" if is_open else "#fef2f2"
         status_border = "#10b981" if is_open else "#ef4444"
@@ -404,173 +538,125 @@ for tab, asset_name in zip(tabs, selected_names):
                 <span style="font-size: 12px; font-weight: 500; color: {status_sub_color}; margin-left: 10px;">{status_sub} ({SYMBOL})</span>
             </div>
             <div style="font-size: 11px; color: {status_sub_color}; opacity: 0.8; white-space: nowrap; text-align: right;">
-                {time_display_str} &nbsp;|&nbsp; 운영: {hours_desc}
+                {data['time_display_str']} &nbsp;|&nbsp; 운영: {data['hours_desc']}
             </div>
         </div>
         """, unsafe_allow_html=True)
 
-        try:
-            prices = fetch_recent_5m_candles(SYMBOL, target_info["is_kr"], target_info.get("naver_symbol", ""))
+        current_price = data["current_price"]
+        risk_score = data["risk_score"]
+        pred_sigma_pct = data["pred_sigma_pct"]
+        rr_ratio = data["rr_ratio"]
+        risk_label = data["risk_label"]
 
-            if len(prices) == 24:
-                current_price = float(prices[-1])
-                log_prices = np.log(prices.astype(float))
-                cidr = log_prices - log_prices[0]
+        delta_color = "inverse" if risk_score >= 65 else ("normal" if risk_score < 40 else "off")
 
-                spl = make_interp_spline(t_grid, cidr, k=3)
-                smoothed = spl(t_grid)
+        # 상단 4대 메트릭 카드
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("변동성 위험 지수", f"{risk_score:.1f}점", delta=risk_label, delta_color=delta_color)
+        c2.metric("1시간 예상 변동폭 (±1σ)", f"±{pred_sigma_pct * 100.0:.2f}%")
+        curr_price_str = f"{int(round(current_price)):,}원" if CURRENCY == "원" else f"${current_price:.2f}"
+        c3.metric("현재 체결가", curr_price_str)
+        c4.metric("기대 손익비 (Reward:Risk)", f"{rr_ratio:.2f} : 1",
+                  delta="균형" if 0.95 <= rr_ratio <= 1.05 else ("유리" if rr_ratio > 1.05 else "불리"))
 
-                centered = smoothed - mu_curve
-                fpc_scores = np.asarray(centered @ V_comp.T, dtype=float).flatten()
+        # 액션 플랜 카드
+        expected_upper = data["expected_upper"]
+        expected_lower = data["expected_lower"]
+        expected_range_value = data["expected_range_value"]
+        channel_pos = data["channel_pos"]
+        is_whipsaw_risk = data["is_whipsaw_risk"]
 
-                if len(fpc_scores) < 3:
-                    padded = np.zeros(3)
-                    padded[:len(fpc_scores)] = fpc_scores
-                    fpc_scores = padded
+        upper_str = f"{int(round(expected_upper)):,}원" if CURRENCY == "원" else f"${expected_upper:.2f}"
+        lower_str = f"{int(round(expected_lower)):,}원" if CURRENCY == "원" else f"${expected_lower:.2f}"
+        range_str = f"{int(round(expected_range_value)):,}원" if CURRENCY == "원" else f"${expected_range_value:.2f}"
+        whipsaw_badge = '<span style="color:#dc2626; font-weight:bold;">⚠️ 주의 (급반전 가능성 높음)</span>' if is_whipsaw_risk else '<span style="color:#059669; font-weight:bold;">✅ 양호 (추세 연속 안정)</span>'
 
-                in_log_ret = np.diff(log_prices)
-                sum_sq = float(np.sum(in_log_ret ** 2))
-                in_rv = float(np.log(sum_sq + 1e-8))
-
-                feat_list = [in_rv] + [float(val) for val in fpc_scores]
-                X = np.array(feat_list, dtype=float).reshape(1, -1)
-                X_scaled = scaler.transform(X)
-
-                raw_pred_log_rv = float(model.predict(X_scaled)[0])
-
-                hist_median = float(np.median(rv_history))
-                dynamic_asset_offset = float(np.clip(in_rv - hist_median, -1.5, 1.5))
-                adjusted_log_rv = float(raw_pred_log_rv + (dynamic_asset_offset * 0.4))
-                pred_rv = float(np.exp(adjusted_log_rv))
-
-                raw_score = float(np.mean(rv_history <= adjusted_log_rv) * 100.0)
-                risk_score = float(np.clip(raw_score, 0.0, 100.0))
-
-                pred_sigma_pct = float(np.sqrt(max(pred_rv, 0.0)))
-                expected_range_value = float(current_price * pred_sigma_pct)
-
-                past_min = float(np.min(prices))
-                past_max = float(np.max(prices))
-                price_spread = max(past_max - past_min, 1e-5)
-                raw_channel_pos = ((current_price - past_min) / price_spread) * 100.0
-                channel_pos = float(np.clip(raw_channel_pos, 0.0, 100.0))
-
-                recent_return = (current_price - prices[0]) / prices[0]
-                trend_intensity = float(np.tanh(recent_return / 0.005))
-                drift_val = float(expected_range_value * 0.15 * trend_intensity)
-
-                expected_upper = float(current_price + drift_val + expected_range_value)
-                expected_lower = float(current_price + drift_val - expected_range_value)
-
-                reward_dist = max(expected_upper - current_price, 1e-5)
-                risk_dist = max(current_price - expected_lower, 1e-5)
-                rr_ratio = float(reward_dist / risk_dist)
-                is_whipsaw_risk = bool(abs(float(fpc_scores[2])) > 0.015)
-
-                strategy_title, strategy_color, strategy_desc, risk_label = get_detailed_trading_strategy(
-                    risk_score, channel_pos, rr_ratio, is_whipsaw_risk, trend_intensity
-                )
-
-                delta_color = "inverse" if risk_score >= 65 else ("normal" if risk_score < 40 else "off")
-
-                # 상단 4대 메트릭 카드
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("변동성 위험 지수", f"{risk_score:.1f}점", delta=risk_label, delta_color=delta_color)
-                c2.metric("1시간 예상 변동폭 (±1σ)", f"±{pred_sigma_pct * 100.0:.2f}%")
-                curr_price_str = f"{int(round(current_price)):,}원" if CURRENCY == "원" else f"${current_price:.2f}"
-                c3.metric("현재 체결가", curr_price_str)
-                c4.metric("기대 손익비 (Reward:Risk)", f"{rr_ratio:.2f} : 1",
-                          delta="균형" if 0.95 <= rr_ratio <= 1.05 else ("유리" if rr_ratio > 1.05 else "불리"))
-
-                # 액션 플랜 카드
-                upper_str = f"{int(round(expected_upper)):,}원" if CURRENCY == "원" else f"${expected_upper:.2f}"
-                lower_str = f"{int(round(expected_lower)):,}원" if CURRENCY == "원" else f"${expected_lower:.2f}"
-                range_str = f"{int(round(expected_range_value)):,}원" if CURRENCY == "원" else f"${expected_range_value:.2f}"
-                whipsaw_badge = '<span style="color:#dc2626; font-weight:bold;">⚠️ 주의 (급반전 가능성 높음)</span>' if is_whipsaw_risk else '<span style="color:#059669; font-weight:bold;">✅ 양호 (추세 연속 안정)</span>'
-
-                st.markdown(f"""
-                <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin: 12px 0 20px 0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px; flex-wrap: wrap;">
-                        <div style="font-size: 16px; font-weight: 700; color: {strategy_color};">{strategy_title}</div>
-                        <div style="font-size: 12px; color: #64748b;">휩소 리스크: {whipsaw_badge}</div>
-                    </div>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 18px;">
-                        <div style="background-color: #f8fafc; padding: 12px 14px; border-radius: 8px; border-left: 4px solid #ef4444; border: 1px solid #f1f5f9; border-left-width: 4px;">
-                            <span style="font-size: 11px; font-weight: 500; color: #64748b;">단기 저항 / 1차 목표가</span>
-                            <div style="font-size: 19px; font-weight: 800; color: #dc2626; margin-top: 4px;">{upper_str}</div>
-                        </div>
-                        <div style="background-color: #f8fafc; padding: 12px 14px; border-radius: 8px; border-left: 4px solid #0ea5e9; border: 1px solid #f1f5f9; border-left-width: 4px;">
-                            <span style="font-size: 11px; font-weight: 500; color: #64748b;">예상 1시간 진폭</span>
-                            <div style="font-size: 19px; font-weight: 800; color: #0284c7; margin-top: 4px;">±{range_str}</div>
-                        </div>
-                        <div style="background-color: #f8fafc; padding: 12px 14px; border-radius: 8px; border-left: 4px solid #10b981; border: 1px solid #f1f5f9; border-left-width: 4px;">
-                            <span style="font-size: 11px; font-weight: 500; color: #64748b;">단기 지지 / 손절 기준선</span>
-                            <div style="font-size: 19px; font-weight: 800; color: #059669; margin-top: 4px;">{lower_str}</div>
-                        </div>
-                    </div>
-                    <div style="background-color: #f8fafc; padding: 12px 16px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #f1f5f9;">
-                        <div style="display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: #475569; margin-bottom: 6px; flex-wrap: wrap;">
-                            <span style="font-weight: 600;">최근 저점 지지</span>
-                            <span style="color: #0284c7; font-weight: 700;">현재 2시간 밴드 내 위치: {channel_pos:.1f}%</span>
-                            <span style="font-weight: 600;">최근 고점 저항</span>
-                        </div>
-                        <div style="width: 100%; background-color: #e2e8f0; border-radius: 6px; height: 10px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);">
-                            <div style="width: {channel_pos}%; background: linear-gradient(90deg, #10b981 0%, #0ea5e9 50%, #ef4444 100%); height: 100%;"></div>
-                        </div>
-                    </div>
-                    <div style="font-size: 13px; color: #334155; line-height: 1.6; background-color: #f0fdf4; padding: 10px 14px; border-radius: 6px; border: 1px solid #dcfce3;">
-                        💡 <b>행동 가이드:</b> {strategy_desc}
-                    </div>
+        st.markdown(f"""
+        <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin: 12px 0 20px 0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px; flex-wrap: wrap;">
+                <div style="font-size: 16px; font-weight: 700; color: {data['strategy_color']};">{data['strategy_title']}</div>
+                <div style="font-size: 12px; color: #64748b;">휩소 리스크: {whipsaw_badge}</div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 18px;">
+                <div style="background-color: #f8fafc; padding: 12px 14px; border-radius: 8px; border-left: 4px solid #ef4444; border: 1px solid #f1f5f9; border-left-width: 4px;">
+                    <span style="font-size: 11px; font-weight: 500; color: #64748b;">단기 저항 / 1차 목표가</span>
+                    <div style="font-size: 19px; font-weight: 800; color: #dc2626; margin-top: 4px;">{upper_str}</div>
                 </div>
-                """, unsafe_allow_html=True)
+                <div style="background-color: #f8fafc; padding: 12px 14px; border-radius: 8px; border-left: 4px solid #0ea5e9; border: 1px solid #f1f5f9; border-left-width: 4px;">
+                    <span style="font-size: 11px; font-weight: 500; color: #64748b;">예상 1시간 진폭</span>
+                    <div style="font-size: 19px; font-weight: 800; color: #0284c7; margin-top: 4px;">±{range_str}</div>
+                </div>
+                <div style="background-color: #f8fafc; padding: 12px 14px; border-radius: 8px; border-left: 4px solid #10b981; border: 1px solid #f1f5f9; border-left-width: 4px;">
+                    <span style="font-size: 11px; font-weight: 500; color: #64748b;">단기 지지 / 손절 기준선</span>
+                    <div style="font-size: 19px; font-weight: 800; color: #059669; margin-top: 4px;">{lower_str}</div>
+                </div>
+            </div>
+            <div style="background-color: #f8fafc; padding: 12px 16px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #f1f5f9;">
+                <div style="display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: #475569; margin-bottom: 6px; flex-wrap: wrap;">
+                    <span style="font-weight: 600;">최근 저점 지지</span>
+                    <span style="color: #0284c7; font-weight: 700;">현재 2시간 밴드 내 위치: {channel_pos:.1f}%</span>
+                    <span style="font-weight: 600;">최근 고점 저항</span>
+                </div>
+                <div style="width: 100%; background-color: #e2e8f0; border-radius: 6px; height: 10px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);">
+                    <div style="width: {channel_pos}%; background: linear-gradient(90deg, #10b981 0%, #0ea5e9 50%, #ef4444 100%); height: 100%;"></div>
+                </div>
+            </div>
+            <div style="font-size: 13px; color: #334155; line-height: 1.6; background-color: #f0fdf4; padding: 10px 14px; border-radius: 6px; border: 1px solid #dcfce3;">
+                💡 <b>행동 가이드:</b> {data['strategy_desc']}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-                # 시계열 & 밴드 차트
-                time_labels = [f"-{(23 - int(i)) * 5}분" for i in range(24)]
-                time_labels[-1] = "현재"
-                future_labels = ["현재", "+30분", "+60분"]
-                future_upper = [current_price, float(current_price + (drift_val * 0.5) + (expected_range_value * 0.7)), expected_upper]
-                future_lower = [current_price, float(current_price + (drift_val * 0.5) - (expected_range_value * 0.7)), expected_lower]
+        # 시계열 & 밴드 차트
+        prices = data["prices"]
+        drift_val = data["drift_val"]
+        time_labels = [f"-{(23 - int(i)) * 5}분" for i in range(24)]
+        time_labels[-1] = "현재"
+        future_labels = ["현재", "+30분", "+60분"]
+        future_upper = [current_price, float(current_price + (drift_val * 0.5) + (expected_range_value * 0.7)), expected_upper]
+        future_lower = [current_price, float(current_price + (drift_val * 0.5) - (expected_range_value * 0.7)), expected_lower]
 
-                line_color = "#d97706" if "금" in asset_name else ("#64748b" if "은" in asset_name else "#0ea5e9")
-                marker_color = "#b45309" if "금" in asset_name else ("#475569" if "은" in asset_name else "#0284c7")
+        line_color = "#d97706" if "금" in asset_name else ("#64748b" if "은" in asset_name else "#0ea5e9")
+        marker_color = "#b45309" if "금" in asset_name else ("#475569" if "은" in asset_name else "#0284c7")
 
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=time_labels, y=prices, mode="lines+markers", name="실제 체결가",
-                                         line=dict(color=line_color, width=2.5), marker=dict(size=6, color=marker_color)))
-                fig.add_trace(go.Scatter(x=future_labels, y=future_lower, mode="lines", name="예상 하한 (-1σ)",
-                                         line=dict(color="rgba(16,185,129,0.8)", width=1.5, dash="dot"), showlegend=True))
-                fig.add_trace(go.Scatter(x=future_labels, y=future_upper, mode="lines", name="예상 상한 (+1σ)",
-                                         line=dict(color="rgba(239,68,68,0.8)", width=1.5, dash="dot"),
-                                         fill="tonexty", fillcolor="rgba(14,165,233,0.1)"))
-                fig.add_shape(type="line", x0="현재", x1="현재", y0=0, y1=1, yref="paper", line=dict(color="#94a3b8", width=1.5, dash="dash"))
-                fig.add_annotation(x="현재", y=1, yref="paper", text="기준점", showarrow=False, xanchor="right", yanchor="top", font=dict(size=10, color="#64748b"))
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=time_labels, y=prices, mode="lines+markers", name="실제 체결가",
+                                 line=dict(color=line_color, width=2.5), marker=dict(size=6, color=marker_color)))
+        fig.add_trace(go.Scatter(x=future_labels, y=future_lower, mode="lines", name="예상 하한 (-1σ)",
+                                 line=dict(color="rgba(16,185,129,0.8)", width=1.5, dash="dot"), showlegend=True))
+        fig.add_trace(go.Scatter(x=future_labels, y=future_upper, mode="lines", name="예상 상한 (+1σ)",
+                                 line=dict(color="rgba(239,68,68,0.8)", width=1.5, dash="dot"),
+                                 fill="tonexty", fillcolor="rgba(14,165,233,0.1)"))
+        fig.add_shape(type="line", x0="현재", x1="현재", y0=0, y1=1, yref="paper", line=dict(color="#94a3b8", width=1.5, dash="dash"))
+        fig.add_annotation(x="현재", y=1, yref="paper", text="기준점", showarrow=False, xanchor="right", yanchor="top", font=dict(size=10, color="#64748b"))
 
-                selected_past_ticks = [str(time_labels[idx]) for idx in [0, 3, 6, 9, 12, 15, 18, 21, 23]]
-                custom_ticks = selected_past_ticks + ["+30분", "+60분"]
-                status_text = "실시간" if is_open else "직전 마감 기준"
+        selected_past_ticks = [str(time_labels[idx]) for idx in [0, 3, 6, 9, 12, 15, 18, 21, 23]]
+        custom_ticks = selected_past_ticks + ["+30분", "+60분"]
+        status_text = "실시간" if is_open else "직전 마감 기준"
 
-                fig.update_layout(
-                    title=dict(text=f"{asset_name} - 2시간 궤적 & 1시간 예측 밴드 ({status_text})", font=dict(size=15, color="#1e293b", family="sans-serif")),
-                    xaxis=dict(title="타임라인", tickmode="array", tickvals=custom_ticks, gridcolor="#f1f5f9", zerolinecolor="#e2e8f0", showgrid=True, tickfont=dict(color="#475569")),
-                    yaxis=dict(title=f"가격 ({CURRENCY})", gridcolor="#f1f5f9", zerolinecolor="#e2e8f0", showgrid=True, tickfont=dict(color="#475569")),
-                    plot_bgcolor="#ffffff", paper_bgcolor="rgba(0,0,0,0)", template="plotly_white", height=430,
-                    margin=dict(l=15, r=15, t=50, b=15), hovermode="x unified",
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="#334155"))
-                )
+        fig.update_layout(
+            title=dict(text=f"{asset_name} - 2시간 궤적 & 1시간 예측 밴드 ({status_text})", font=dict(size=15, color="#1e293b", family="sans-serif")),
+            xaxis=dict(title="타임라인", tickmode="array", tickvals=custom_ticks, gridcolor="#f1f5f9", zerolinecolor="#e2e8f0", showgrid=True, tickfont=dict(color="#475569")),
+            yaxis=dict(title=f"가격 ({CURRENCY})", gridcolor="#f1f5f9", zerolinecolor="#e2e8f0", showgrid=True, tickfont=dict(color="#475569")),
+            plot_bgcolor="#ffffff", paper_bgcolor="rgba(0,0,0,0)", template="plotly_white", height=430,
+            margin=dict(l=15, r=15, t=50, b=15), hovermode="x unified",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="#334155"))
+        )
 
-                st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True)
 
-                # 메타정보
-                trading_h = float(target_info.get("trading_hours", 6.5))
-                daily_scale = trading_h / 2.0
-                annualized_vol = float(np.sqrt(max(pred_rv, 0.0) * daily_scale * 252.0) * 100.0)
+        # 메타정보
+        trading_h = float(target_info.get("trading_hours", 6.5))
+        daily_scale = trading_h / 2.0
+        annualized_vol = float(np.sqrt(max(data["pred_rv"], 0.0) * daily_scale * 252.0) * 100.0)
 
-                with st.expander(f"{asset_name} 모형 상태 및 FPCA 특징치"):
-                    st.write(f"- **현재 2시간 관측 실현 변동성 ($\\ln RV_t$):** `{in_rv:.4f}`")
-                    st.write(f"- **예측 1시간 선행 RV ($\\ln \\widehat{{RV}}_{{t+1}}$):** `{adjusted_log_rv:.4f}` (연환산 변동성: `{annualized_vol:.2f}%`)")
-                    st.write(f"- **동적 레벨 보정치 (Local Offset):** `{dynamic_asset_offset:+.4f}` (Raw 모델 예측: `{raw_pred_log_rv:.4f}`)")
-                    st.write(f"- **FPCA 주성분 계수 (1~3):** `{float(fpc_scores[0]):.4f}, {float(fpc_scores[1]):.4f}, {float(fpc_scores[2]):.4f}`")
-                    st.caption("시세 데이터는 60초 주기로 자동 캐싱 갱신됩니다.")
+        with st.expander(f"{asset_name} 모형 상태 및 FPCA 특징치"):
+            st.write(f"- **현재 2시간 관측 실현 변동성 ($\\ln RV_t$):** `{data['in_rv']:.4f}`")
+            st.write(f"- **예측 1시간 선행 RV ($\\ln \\widehat{{RV}}_{{t+1}}$):** `{data['adjusted_log_rv']:.4f}` (연환산 변동성: `{annualized_vol:.2f}%`)")
+            st.write(f"- **동적 레벨 보정치 (Local Offset):** `{data['dynamic_asset_offset']:+.4f}` (Raw 모델 예측: `{data['raw_pred_log_rv']:.4f}`)")
+            st.write(f"- **FPCA 주성분 계수 (1~3):** `{float(data['fpc_scores'][0]):.4f}, {float(data['fpc_scores'][1]):.4f}, {float(data['fpc_scores'][2]):.4f}`")
+            st.caption("시세 데이터는 60초 주기로 자동 캐싱 갱신됩니다.")
             else:
                 st.warning(f"{asset_name}: 데이터 표본 부족 (확보: {len(prices)}개 / 필요: 24개)")
 
