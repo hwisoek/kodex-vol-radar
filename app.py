@@ -36,35 +36,149 @@ st_autorefresh(
 st.sidebar.markdown("### ⚙️ 자산 모니터링")
 
 TICKER_MAP = {
-    # 대표 지수 & 원자재
-    "KODEX 200 (한국 코스피200)": {"symbol": "069500.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "069500"},
-    "KODEX 코스닥150 (한국 코스닥)": {"symbol": "229200.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "229200"},
+    # --------------------------------------------------------------------------
+    # 1. 한국 시장 대표 지수 및 섹터 ETF (12개)
+    # --------------------------------------------------------------------------
+    "KODEX 200 (코스피 200)": {"symbol": "069500.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "069500"},
+    "KODEX 코스닥150": {"symbol": "229200.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "229200"},
+    "KODEX 레버리지 (코스피 2배)": {"symbol": "122630.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "122630"},
+    "KODEX 200선물인버스2X (곱버스)": {"symbol": "252670.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "252670"},
+    "KODEX 코스닥150레버리지": {"symbol": "233740.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "233740"},
+    "KODEX 코스닥150선물인버스": {"symbol": "251340.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "251340"},
+    "TIGER 2차전지테마": {"symbol": "305540.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "305540"},
+    "TIGER 반도체 TOP10": {"symbol": "396500.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "396500"},
+    "KODEX 반도체": {"symbol": "091160.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "091160"},
+    "TIGER 미국필라델피아반도체나스닥": {"symbol": "381180.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "381180"},
+    "TIGER 미국나스닥100": {"symbol": "133690.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "133690"},
+    "ACE 미국S&P500": {"symbol": "360200.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "360200"},
+
+    # --------------------------------------------------------------------------
+    # 2. 한국 대형주 & 단타 인기 종목 (18개)
+    # --------------------------------------------------------------------------
+    "삼성전자 (005930)": {"symbol": "005930.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "005930"},
+    "SK하이닉스 (000660)": {"symbol": "000660.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "000660"},
+    "LG에너지솔루션 (373220)": {"symbol": "373220.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "373220"},
+    "삼성바이오로직스 (207940)": {"symbol": "207940.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "207940"},
+    "현대차 (005380)": {"symbol": "005380.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "005380"},
+    "기아 (000270)": {"symbol": "000270.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "000270"},
+    "셀트리온 (068270)": {"symbol": "068270.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "068270"},
+    "POSCO홀딩스 (005490)": {"symbol": "005490.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "005490"},
+    "NAVER (네이버 035420)": {"symbol": "035420.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "035420"},
+    "카카오 (035720)": {"symbol": "035720.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "035720"},
+    "에코프로비엠 (247540)": {"symbol": "247540.KQ", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "코스닥 (KOSDAQ)", "naver_symbol": "247540"},
+    "에코프로 (086520)": {"symbol": "086520.KQ", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "코스닥 (KOSDAQ)", "naver_symbol": "086520"},
+    "알테오젠 (196170)": {"symbol": "196170.KQ", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "코스닥 (KOSDAQ)", "naver_symbol": "196170"},
+    "HLB (028300)": {"symbol": "028300.KQ", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "코스닥 (KOSDAQ)", "naver_symbol": "028300"},
+    "한미반도체 (042700)": {"symbol": "042700.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "042700"},
+    "삼천당제약 (000250)": {"symbol": "000250.KQ", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "코스닥 (KOSDAQ)", "naver_symbol": "000250"},
+    "두산에너빌리티 (034020)": {"symbol": "034020.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "034020"},
+    "한화에어로스페이스 (012450)": {"symbol": "012450.KS", "currency": "원", "is_kr": True, "trading_hours": 6.5, "tz": "Asia/Seoul", "market_name": "한국거래소 (KRX)", "naver_symbol": "012450"},
+
+    # --------------------------------------------------------------------------
+    # 3. 미국 지수 및 섹터 대표 ETF (10개)
+    # --------------------------------------------------------------------------
     "SPY (미국 S&P 500 ETF)": {"symbol": "SPY", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
     "QQQ (미국 나스닥 100 ETF)": {"symbol": "QQQ", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "DIA (다우존스 30 산업 ETF)": {"symbol": "DIA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
-    "IWM (미국 러셀 2000 중소형 ETF)": {"symbol": "IWM", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "DIA (다우존스 30 ETF)": {"symbol": "DIA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "IWM (러셀 2000 중소형 ETF)": {"symbol": "IWM", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "SOXX (필라델피아 반도체 ETF)": {"symbol": "SOXX", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "SMH (반호크 반도체 ETF)": {"symbol": "SMH", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "XLK (미국 기술주 섹터 ETF)": {"symbol": "XLK", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "XLF (미국 금융 섹터 ETF)": {"symbol": "XLF", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "XLE (미국 에너지 섹터 ETF)": {"symbol": "XLE", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "ARKK (아크 혁신 ETF)": {"symbol": "ARKK", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+
+    # --------------------------------------------------------------------------
+    # 4. 미국 초고변동성 레버리지 / 인버스 ETF (16개)
+    # --------------------------------------------------------------------------
+    "TQQQ (나스닥 3배 레버리지)": {"symbol": "TQQQ", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "SQQQ (나스닥 -3배 인버스)": {"symbol": "SQQQ", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "SOXL (반도체 3배 레버리지)": {"symbol": "SOXL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "SOXS (반도체 -3배 인버스)": {"symbol": "SOXS", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "UPRO (S&P 500 3배 레버리지)": {"symbol": "UPRO", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "SPXU (S&P 500 -3배 인버스)": {"symbol": "SPXU", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "TNA (러셀 2000 3배 레버리지)": {"symbol": "TNA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "TZA (러셀 2000 -3배 인버스)": {"symbol": "TZA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "NVDL (엔비디아 2배 레버리지)": {"symbol": "NVDL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "TSLL (테슬라 2배 레버리지)": {"symbol": "TSLL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "TSLS (테슬라 -1배 인버스)": {"symbol": "TSLS", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "CONL (코인베이스 2배 레버리지)": {"symbol": "CONL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "FNGU (FAANG+ 테크 3배 레버리지)": {"symbol": "FNGU", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "FNGD (FAANG+ 테크 -3배 인버스)": {"symbol": "FNGD", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "LABU (바이오 3배 레버리지)": {"symbol": "LABU", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "LABD (바이오 -3배 인버스)": {"symbol": "LABD", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+
+    # --------------------------------------------------------------------------
+    # 5. 원자재, 채권, 안전자산 ETF (10개)
+    # --------------------------------------------------------------------------
     "GLD (SPDR 글로벌 금 ETF)": {"symbol": "GLD", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
     "SLV (iShares 글로벌 은 ETF)": {"symbol": "SLV", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
     "USO (미국 WTI 원유 펀드)": {"symbol": "USO", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-    "TLT (미국 20년+ 국채 ETF)": {"symbol": "TLT", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    # 테크 & 대형주
-    "SOXX (미국 필라델피아 반도체 ETF)": {"symbol": "SOXX", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "UNG (미국 천연가스 펀드)": {"symbol": "UNG", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "TLT (미국 20년+ 장기국채 ETF)": {"symbol": "TLT", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "TMF (미국 20년+ 국채 3배 레버리지)": {"symbol": "TMF", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "TMV (미국 20년+ 국채 -3배 인버스)": {"symbol": "TMV", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "HYG (미국 하이일드 회사채 ETF)": {"symbol": "HYG", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "UUP (미국 달러 인덱스 강세 ETF)": {"symbol": "UUP", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+    "CPER (미국 구리 선물 ETF)": {"symbol": "CPER", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
+
+    # --------------------------------------------------------------------------
+    # 6. 미국 빅테크 / M7 및 반도체 핵심주 (22개)
+    # --------------------------------------------------------------------------
     "엔비디아 (NVDA)": {"symbol": "NVDA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "테슬라 (TSLA)": {"symbol": "TSLA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
     "애플 (AAPL)": {"symbol": "AAPL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
     "마이크로소프트 (MSFT)": {"symbol": "MSFT", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
     "구글 알파벳 A (GOOGL)": {"symbol": "GOOGL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
     "아마존 (AMZN)": {"symbol": "AMZN", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
     "메타 플랫폼스 (META)": {"symbol": "META", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "테슬라 (TSLA)": {"symbol": "TSLA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
     "TSMC ADR (TSM)": {"symbol": "TSM", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
-    "AMD (어드밴스드 마이크로 디바이스)": {"symbol": "AMD", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
     "브로드컴 (AVGO)": {"symbol": "AVGO", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    # 레버리지 & 기타 단타 인기 자산
-    "TQQQ (나스닥 100 3배 레버리지)": {"symbol": "TQQQ", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "SQQQ (나스닥 100 -3배 인버스)": {"symbol": "SQQQ", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "SOXL (반도체 3배 레버리지)": {"symbol": "SOXL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-    "SOXS (반도체 -3배 인버스)": {"symbol": "SOXS", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-    "코인베이스 (COIN)": {"symbol": "COIN", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"}
+    "AMD (어드밴스드 마이크로 디바이스)": {"symbol": "AMD", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "ASML 홀딩 (ASML)": {"symbol": "ASML", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "퀄컴 (QCOM)": {"symbol": "QCOM", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "인텔 (INTC)": {"symbol": "INTC", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "마이크론 테크놀로지 (MU)": {"symbol": "MU", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "어플라이드 머티어리얼즈 (AMAT)": {"symbol": "AMAT", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "램리서치 (LRCX)": {"symbol": "LRCX", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "암 홀딩스 (ARM)": {"symbol": "ARM", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "슈퍼마이크로컴퓨터 (SMCI)": {"symbol": "SMCI", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "텍사스 인스트루먼트 (TXN)": {"symbol": "TXN", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "온세미컨덕터 (ON)": {"symbol": "ON", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "마벨 테크놀로지 (MRVL)": {"symbol": "MRVL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "KLA 코퍼레이션 (KLAC)": {"symbol": "KLAC", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+
+    # --------------------------------------------------------------------------
+    # 7. 미국 소프트웨어, AI, 플랫폼, 핀테크 (12개)
+    # --------------------------------------------------------------------------
+    "팔란티어 테크 (PLTR)": {"symbol": "PLTR", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "코인베이스 (COIN)": {"symbol": "COIN", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "넷플릭스 (NFLX)": {"symbol": "NFLX", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "세일즈포스 (CRM)": {"symbol": "CRM", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "오라클 (ORCL)": {"symbol": "ORCL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "어도비 (ADBE)": {"symbol": "ADBE", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "우버 테크놀로지스 (UBER)": {"symbol": "UBER", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "스노우플레이크 (SNOW)": {"symbol": "SNOW", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "크라우드스트라이크 (CRWD)": {"symbol": "CRWD", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "로빈후드 (HOOD)": {"symbol": "HOOD", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "블록 (SQ)": {"symbol": "SQ", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "마이크로스트래티지 (MSTR)": {"symbol": "MSTR", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+
+    # --------------------------------------------------------------------------
+    # 8. 전통 우량주, 바이오, 금융, 소비재 (12개)
+    # --------------------------------------------------------------------------
+    "일라이 릴리 (LLY)": {"symbol": "LLY", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "노보 노디스크 ADR (NVO)": {"symbol": "NVO", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "JP모건 체이스 (JPM)": {"symbol": "JPM", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "비자 (V)": {"symbol": "V", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "마스터카드 (MA)": {"symbol": "MA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "월마트 (WMT)": {"symbol": "WMT", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "코스트코 (COST)": {"symbol": "COST", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
+    "엑슨모빌 (XOM)": {"symbol": "XOM", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "셰브론 (CVX)": {"symbol": "CVX", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "보잉 (BA)": {"symbol": "BA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "화이자 (PFE)": {"symbol": "PFE", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
+    "모더나 (MRNA)": {"symbol": "MRNA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"}
 }
 
 # 이름 타이핑으로 자동완성 검색 + 최대 3개 선택 제한
