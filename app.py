@@ -12,6 +12,7 @@ from datetime import datetime, time
 import pytz
 import traceback
 
+
 # ==============================================================================
 # 1. 페이지 레이아웃 및 자동 새로고침 설정
 # ==============================================================================
@@ -27,11 +28,13 @@ st_autorefresh(
     key="global_vol_radar_refresh"
 )
 
+
 # ==============================================================================
 # 2. 사이드바: 모니터링 자산 선택 및 메타데이터
 # ==============================================================================
 
 st.sidebar.markdown("### ⚙️ 자산 모니터링")
+
 
 TICKER_MAP = {
     "KODEX 200 (한국 코스피200)": {
@@ -43,6 +46,7 @@ TICKER_MAP = {
         "market_name": "한국거래소 (KRX)",
         "naver_symbol": "069500"
     },
+
     "SPY (미국 S&P 500 ETF)": {
         "symbol": "SPY",
         "currency": "$",
@@ -51,6 +55,7 @@ TICKER_MAP = {
         "tz": "America/New_York",
         "market_name": "미국 NYSE"
     },
+
     "QQQ (미국 나스닥 100 ETF)": {
         "symbol": "QQQ",
         "currency": "$",
@@ -59,6 +64,7 @@ TICKER_MAP = {
         "tz": "America/New_York",
         "market_name": "미국 NASDAQ"
     },
+
     "SOXX (미국 반도체 ETF)": {
         "symbol": "SOXX",
         "currency": "$",
@@ -67,6 +73,7 @@ TICKER_MAP = {
         "tz": "America/New_York",
         "market_name": "미국 NASDAQ"
     },
+
     "GLD (SPDR 글로벌 금 ETF)": {
         "symbol": "GLD",
         "currency": "$",
@@ -75,6 +82,7 @@ TICKER_MAP = {
         "tz": "America/New_York",
         "market_name": "미국 NYSE Arca"
     },
+
     "SLV (iShares 글로벌 은 ETF)": {
         "symbol": "SLV",
         "currency": "$",
@@ -84,6 +92,7 @@ TICKER_MAP = {
         "market_name": "미국 NYSE Arca"
     }
 }
+
 
 selected_name = st.sidebar.selectbox(
     "종목 선택",
@@ -95,7 +104,11 @@ target_info = TICKER_MAP[selected_name]
 SYMBOL = str(target_info["symbol"])
 CURRENCY = str(target_info["currency"])
 
-# 화이트톤 사이드바 카드
+
+# ==============================================================================
+# 사이드바 카드
+# ==============================================================================
+
 sidebar_card_html = f"""
 <div style="
     background-color: #ffffff;
@@ -105,7 +118,11 @@ sidebar_card_html = f"""
     margin-top: 15px;
     box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 ">
-    <div style="font-size: 11px; color: #64748b;">
+
+    <div style="
+        font-size: 11px;
+        color: #64748b;
+    ">
         상장 거래소
     </div>
 
@@ -118,7 +135,10 @@ sidebar_card_html = f"""
         {target_info['market_name']}
     </div>
 
-    <div style="font-size: 11px; color: #64748b;">
+    <div style="
+        font-size: 11px;
+        color: #64748b;
+    ">
         표시 심볼 / 통화
     </div>
 
@@ -129,6 +149,7 @@ sidebar_card_html = f"""
     ">
         {SYMBOL} ({CURRENCY})
     </div>
+
 </div>
 """
 
@@ -137,11 +158,15 @@ st.sidebar.markdown(
     unsafe_allow_html=True
 )
 
+
 # ==============================================================================
-# 3. 장중 / 장마감 실시간 상태 판별 함수
+# 3. 장중 / 장마감 상태 판별
 # ==============================================================================
 
-def check_market_status(target_tz_str: str, is_kr: bool):
+def check_market_status(
+    target_tz_str: str,
+    is_kr: bool
+):
 
     kst = pytz.timezone("Asia/Seoul")
     now_kst = datetime.now(kst)
@@ -153,6 +178,7 @@ def check_market_status(target_tz_str: str, is_kr: bool):
     is_weekend = weekday >= 5
 
     if is_kr:
+
         open_time = time(9, 0)
         close_time = time(15, 30)
 
@@ -164,6 +190,7 @@ def check_market_status(target_tz_str: str, is_kr: bool):
         hours_str = "09:00 ~ 15:30 KST"
 
     else:
+
         open_time = time(9, 30)
         close_time = time(16, 0)
 
@@ -186,18 +213,43 @@ is_open, current_kst_str, hours_desc = check_market_status(
     target_info["is_kr"]
 )
 
+
 # ==============================================================================
-# 4. 헤더 및 상태 바
+# 4. 헤더 및 상태 배너
 # ==============================================================================
 
 st.markdown(
     "## 🎯 글로벌 변동성 레이더 & 단타 트레이딩 가이드"
 )
 
-status_bg = "#ecfdf5" if is_open else "#fef2f2"
-status_border = "#10b981" if is_open else "#ef4444"
-status_text_color = "#065f46" if is_open else "#991b1b"
-status_sub_color = "#047857" if is_open else "#b91c1c"
+
+status_bg = (
+    "#ecfdf5"
+    if is_open
+    else
+    "#fef2f2"
+)
+
+status_border = (
+    "#10b981"
+    if is_open
+    else
+    "#ef4444"
+)
+
+status_text_color = (
+    "#065f46"
+    if is_open
+    else
+    "#991b1b"
+)
+
+status_sub_color = (
+    "#047857"
+    if is_open
+    else
+    "#b91c1c"
+)
 
 status_title = (
     "🟢 [정규장 운영 중 - LIVE]"
@@ -213,6 +265,10 @@ status_sub = (
     f"{target_info['market_name']} 마감 데이터 고정"
 )
 
+
+# 중요:
+# 왼쪽/오른쪽 div 구조를 명확하게 분리하여
+# HTML 태그가 깨지지 않도록 구성
 status_banner_html = f"""
 <div style="
     background-color: {status_bg};
@@ -223,9 +279,17 @@ status_banner_html = f"""
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 16px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 ">
-    <div>
+
+    <div style="
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        min-width: 0;
+    ">
+
         <span style="
             font-size: 14px;
             font-weight: 700;
@@ -242,16 +306,22 @@ status_banner_html = f"""
         ">
             {status_sub}
         </span>
+
     </div>
 
     <div style="
         font-size: 11px;
         color: {status_sub_color};
         opacity: 0.8;
+        white-space: nowrap;
+        text-align: right;
     ">
-        기준시각: <b>{current_kst_str}</b>
-        | 운영: {hours_desc}
+        기준시각:
+        <b>{current_kst_str}</b>
+        &nbsp;|&nbsp;
+        운영: {hours_desc}
     </div>
+
 </div>
 """
 
@@ -260,13 +330,17 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+
 # ==============================================================================
 # 5. 모델 로드
 # ==============================================================================
 
 @st.cache_resource
 def load_model():
-    return joblib.load("model_artifacts.pkl")
+
+    return joblib.load(
+        "model_artifacts.pkl"
+    )
 
 
 try:
@@ -284,6 +358,7 @@ try:
     )
 
     scaler = artifacts["scaler"]
+
     model = artifacts["model"]
 
     rv_history = np.array(
@@ -305,8 +380,9 @@ except Exception as e:
 
     st.stop()
 
+
 # ==============================================================================
-# 6. 실시간 5분봉 수집 파이프라인
+# 6. 실시간 5분봉 수집
 # ==============================================================================
 
 @st.cache_data(ttl=60)
@@ -326,7 +402,8 @@ def fetch_recent_5m_candles(
 
         session.headers.update({
             "User-Agent":
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "Mozilla/5.0 "
+                "(Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 "
                 "(KHTML, like Gecko) "
                 "Chrome/120.0.0.0 Safari/537.36"
@@ -368,6 +445,7 @@ def fetch_recent_5m_candles(
             f"yfinance 1차 실패 ({symbol}): {e}"
         )
 
+
     # --------------------------------------------------------------------------
     # 2차: Yahoo Finance 직접 API
     # --------------------------------------------------------------------------
@@ -379,12 +457,15 @@ def fetch_recent_5m_candles(
             url = (
                 f"https://query1.finance.yahoo.com/v8/finance/chart/"
                 f"{symbol}"
-                f"?interval=5m&range=5d&includePrePost=true"
+                f"?interval=5m"
+                f"&range=5d"
+                f"&includePrePost=true"
             )
 
             headers = {
                 "User-Agent":
-                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "Mozilla/5.0 "
+                    "(Macintosh; Intel Mac OS X 10_15_7) "
                     "AppleWebKit/537.36 "
                     "(KHTML, like Gecko) "
                     "Chrome/122.0.0.0 Safari/537.36"
@@ -438,6 +519,7 @@ def fetch_recent_5m_candles(
                 f"Yahoo Direct API 실패 ({symbol}): {e}"
             )
 
+
     # --------------------------------------------------------------------------
     # 3차: 한국 네이버 금융
     # --------------------------------------------------------------------------
@@ -447,6 +529,7 @@ def fetch_recent_5m_candles(
         try:
 
             if not naver_symbol:
+
                 raise ValueError(
                     "네이버 종목 코드가 없습니다."
                 )
@@ -509,13 +592,15 @@ def fetch_recent_5m_candles(
                 f"네이버 차트 수집 실패 ({symbol}): {e}"
             )
 
+
     raise ValueError(
         f"{symbol} 5분봉 표본 부족 또는 IP 차단 "
         f"(최소 24개 필요)"
     )
 
+
 # ==============================================================================
-# 7. 전략 판단 함수
+# 7. 상세 트레이딩 전략
 # ==============================================================================
 
 def get_detailed_trading_strategy(
@@ -526,12 +611,12 @@ def get_detailed_trading_strategy(
     fpc_scores
 ):
 
-    # FPC 데이터 방어
     fpc_scores = np.asarray(
         fpc_scores,
         dtype=float
     ).flatten()
 
+    # FPC가 3개 미만인 경우 방어
     if len(fpc_scores) < 3:
 
         padded = np.zeros(3)
@@ -544,12 +629,18 @@ def get_detailed_trading_strategy(
     fpc2 = float(fpc_scores[1])
     fpc3 = float(fpc_scores[2])
 
-    is_strong_trend_up = fpc1 > 0.01
-    is_strong_trend_down = fpc1 < -0.01
+    is_strong_trend_up = (
+        fpc1 > 0.01
+    )
 
-    # --------------------------------------------------------------------------
-    # 1. 극초고변동성
-    # --------------------------------------------------------------------------
+    is_strong_trend_down = (
+        fpc1 < -0.01
+    )
+
+
+    # ==========================================================================
+    # 1. 극초고변동성 국면
+    # ==========================================================================
 
     if risk_score >= 85.0:
 
@@ -574,9 +665,9 @@ def get_detailed_trading_strategy(
                     "💥 [전략 02] 패닉셀 투매 낙주 투입",
                     "#dc2626",
                     "극단적 패닉셀 투매 국면입니다. "
-                    "손절선 이탈 시 일시적 언더슈팅 반등을 노린 "
-                    "분할 매수만 유효하며, 반등 실패 시 "
-                    "1틱 단위 칼손절이 필수입니다.",
+                    "손절선 이탈 시 일시적 언더슈팅 반등(데드캣)을 "
+                    "노린 분할 매수만 유효하며, "
+                    "반등 실패 시 1틱 단위 칼손절이 필수입니다.",
                     "🚨 초고위험 (낙주)",
                     "inverse"
                 )
@@ -596,7 +687,10 @@ def get_detailed_trading_strategy(
 
         else:
 
-            if channel_pos > 50.0 and is_strong_trend_up:
+            if (
+                channel_pos > 50.0
+                and is_strong_trend_up
+            ):
 
                 return (
                     "🚀 [전략 04] 불타기 모멘텀 호가 돌파 스캘핑",
@@ -609,7 +703,10 @@ def get_detailed_trading_strategy(
                     "inverse"
                 )
 
-            elif channel_pos <= 50.0 and is_strong_trend_down:
+            elif (
+                channel_pos <= 50.0
+                and is_strong_trend_down
+            ):
 
                 return (
                     "⚡ [전략 05] 지지선 붕괴 하방 모멘텀 숏/손절 가속",
@@ -633,9 +730,10 @@ def get_detailed_trading_strategy(
                     "inverse"
                 )
 
-    # --------------------------------------------------------------------------
-    # 2. 고변동성
-    # --------------------------------------------------------------------------
+
+    # ==========================================================================
+    # 2. 고변동성 / 강추세
+    # ==========================================================================
 
     elif risk_score >= 65.0:
 
@@ -646,7 +744,7 @@ def get_detailed_trading_strategy(
                 return (
                     "⚠️ [전략 07] 손익비 우위 역배열 덫 탈출 단타",
                     "#ea580c",
-                    "손익비는 유리하나 급격한 반전 가능성이 큽니다. "
+                    "손익비는 유리하나 급격한 반전(휩소) 가능성이 큽니다. "
                     "채널 하단 근접 시 지정가로만 체결시키고, "
                     "목표가의 50% 지점에서 조기 익절하세요.",
                     "⚖️ 고위험 (단기역추세)",
@@ -705,9 +803,10 @@ def get_detailed_trading_strategy(
                     "normal"
                 )
 
-    # --------------------------------------------------------------------------
-    # 3. 중변동성
-    # --------------------------------------------------------------------------
+
+    # ==========================================================================
+    # 3. 중변동성 / 균형 파동
+    # ==========================================================================
 
     elif risk_score >= 40.0:
 
@@ -747,7 +846,7 @@ def get_detailed_trading_strategy(
                     "#0ea5e9",
                     "하단선과 현재가의 거리가 가까워 손절폭은 극히 짧고 "
                     "기대 수익폭은 큽니다. "
-                    "리스크 대비 수익 효율이 높은 진입 타점입니다.",
+                    "리스크 대비 수익 효율이 가장 높은 최적의 진입 타점입니다.",
                     "✅ 적극 매수",
                     "normal"
                 )
@@ -789,9 +888,10 @@ def get_detailed_trading_strategy(
                     "normal"
                 )
 
-    # --------------------------------------------------------------------------
-    # 4. 저변동성
-    # --------------------------------------------------------------------------
+
+    # ==========================================================================
+    # 4. 저변동성 / 박스권
+    # ==========================================================================
 
     elif risk_score >= 20.0:
 
@@ -831,9 +931,10 @@ def get_detailed_trading_strategy(
                 "normal"
             )
 
-    # --------------------------------------------------------------------------
-    # 5. 극저변동성
-    # --------------------------------------------------------------------------
+
+    # ==========================================================================
+    # 5. 극저변동성 / 에너지 압축
+    # ==========================================================================
 
     else:
 
@@ -885,6 +986,7 @@ def get_detailed_trading_strategy(
                 "normal"
             )
 
+
 # ==============================================================================
 # 8. 실시간 추론 및 단타 지표 산출
 # ==============================================================================
@@ -894,8 +996,12 @@ try:
     prices = fetch_recent_5m_candles(
         SYMBOL,
         target_info["is_kr"],
-        target_info.get("naver_symbol", "")
+        target_info.get(
+            "naver_symbol",
+            ""
+        )
     )
+
 
     if len(prices) == 24:
 
@@ -903,8 +1009,9 @@ try:
             prices[-1]
         )
 
+
         # ----------------------------------------------------------------------
-        # 로그 가격 및 FPCA
+        # 로그 가격
         # ----------------------------------------------------------------------
 
         log_prices = np.log(
@@ -916,6 +1023,11 @@ try:
             - log_prices[0]
         )
 
+
+        # ----------------------------------------------------------------------
+        # 스플라인 보간
+        # ----------------------------------------------------------------------
+
         spl = make_interp_spline(
             t_grid,
             cidr,
@@ -925,6 +1037,11 @@ try:
         smoothed = spl(
             t_grid
         )
+
+
+        # ----------------------------------------------------------------------
+        # FPCA
+        # ----------------------------------------------------------------------
 
         centered = (
             smoothed
@@ -936,7 +1053,7 @@ try:
             dtype=float
         ).flatten()
 
-        # FPC 최소 3개 방어
+
         if len(fpc_scores) < 3:
 
             padded = np.zeros(3)
@@ -944,6 +1061,7 @@ try:
             padded[:len(fpc_scores)] = fpc_scores
 
             fpc_scores = padded
+
 
         # ----------------------------------------------------------------------
         # 실현 변동성
@@ -965,6 +1083,7 @@ try:
             )
         )
 
+
         # ----------------------------------------------------------------------
         # 모델 입력
         # ----------------------------------------------------------------------
@@ -982,20 +1101,28 @@ try:
             dtype=float
         ).reshape(1, -1)
 
+
         X_scaled = scaler.transform(
             X
         )
 
+
         pred_log_rv = float(
-            model.predict(X_scaled)[0]
+            model.predict(
+                X_scaled
+            )[0]
         )
+
 
         pred_rv = float(
-            np.exp(pred_log_rv)
+            np.exp(
+                pred_log_rv
+            )
         )
 
+
         # ----------------------------------------------------------------------
-        # 자산별 보정
+        # 자산별 변동성 보정
         # ----------------------------------------------------------------------
 
         offset_val = float(
@@ -1007,11 +1134,13 @@ try:
             + offset_val
         )
 
+
         raw_score = float(
             np.mean(
                 rv_history <= adjusted_log_rv
             ) * 100.0
         )
+
 
         risk_score = float(
             np.clip(
@@ -1021,58 +1150,77 @@ try:
             )
         )
 
+
         # ----------------------------------------------------------------------
-        # 예상 변동폭
+        # 예상 1시간 변동폭
         # ----------------------------------------------------------------------
 
         pred_sigma_pct = float(
             np.sqrt(
-                max(pred_rv, 0.0)
+                max(
+                    pred_rv,
+                    0.0
+                )
             )
         )
+
 
         expected_range_value = float(
             current_price
             * pred_sigma_pct
         )
 
+
         expected_upper = float(
             current_price
             + expected_range_value
         )
+
 
         expected_lower = float(
             current_price
             - expected_range_value
         )
 
+
         # ----------------------------------------------------------------------
-        # R:R
+        # 손익비
         # ----------------------------------------------------------------------
 
         reward_dist = max(
-            expected_upper - current_price,
+            expected_upper
+            - current_price,
             1e-5
         )
+
 
         risk_dist = max(
-            current_price - expected_lower,
+            current_price
+            - expected_lower,
             1e-5
         )
+
 
         rr_ratio = float(
-            reward_dist / risk_dist
+            reward_dist
+            / risk_dist
         )
 
+
         denom = max(
-            expected_upper - expected_lower,
+            expected_upper
+            - expected_lower,
             1e-5
         )
+
 
         channel_pos = float(
             np.clip(
                 (
-                    (current_price - expected_lower)
+                    (
+                        current_price
+                        - expected_lower
+                    )
                     / denom
                 ) * 100.0,
                 0.0,
@@ -1080,15 +1228,19 @@ try:
             )
         )
 
+
         # ----------------------------------------------------------------------
-        # 휩소 위험 계산
-        # 기존 코드에서는 전략 함수 호출 이후에 계산되어
-        # UnboundLocalError가 발생할 수 있었음.
+        # 휩소 리스크
         # ----------------------------------------------------------------------
 
         is_whipsaw_risk = bool(
-            abs(float(fpc_scores[2])) > 0.015
+            abs(
+                float(
+                    fpc_scores[2]
+                )
+            ) > 0.015
         )
+
 
         # ----------------------------------------------------------------------
         # 전략 결정
@@ -1108,8 +1260,9 @@ try:
             fpc_scores=fpc_scores
         )
 
+
         # ----------------------------------------------------------------------
-        # Risk Score delta 색상
+        # Risk Score 표시 색상
         # ----------------------------------------------------------------------
 
         if risk_score >= 65:
@@ -1124,11 +1277,13 @@ try:
 
             delta_color = "off"
 
+
         # ==============================================================================
         # 9. 상단 핵심 지표 카드
         # ==============================================================================
 
         col1, col2, col3, col4 = st.columns(4)
+
 
         col1.metric(
             "변동성 위험 지수",
@@ -1137,21 +1292,26 @@ try:
             delta_color=delta_color
         )
 
+
         col2.metric(
             "1시간 예상 변동폭 (±1σ)",
             f"±{pred_sigma_pct * 100.0:.2f}%"
         )
 
+
         curr_price_str = (
             f"{int(round(current_price)):,}원"
             if CURRENCY == "원"
-            else f"${current_price:.2f}"
+            else
+            f"${current_price:.2f}"
         )
+
 
         col3.metric(
             "현재 체결가",
             curr_price_str
         )
+
 
         col4.metric(
             "기대 손익비 (R:R)",
@@ -1159,46 +1319,71 @@ try:
             delta=(
                 "균형"
                 if 0.9 <= rr_ratio <= 1.1
-                else (
+                else
+                (
                     "유리"
                     if rr_ratio > 1.1
-                    else "불리"
+                    else
+                    "불리"
                 )
             )
         )
 
+
         # ==============================================================================
-        # 10. 실시간 액션 플랜 & 포지션 레인지 바
+        # 10. 액션 플랜
         # ==============================================================================
 
         upper_str = (
             f"{int(round(expected_upper)):,}원"
             if CURRENCY == "원"
-            else f"${expected_upper:.2f}"
+            else
+            f"${expected_upper:.2f}"
         )
+
 
         lower_str = (
             f"{int(round(expected_lower)):,}원"
             if CURRENCY == "원"
-            else f"${expected_lower:.2f}"
+            else
+            f"${expected_lower:.2f}"
         )
+
 
         range_str = (
             f"{int(round(expected_range_value)):,}원"
             if CURRENCY == "원"
-            else f"${expected_range_value:.2f}"
+            else
+            f"${expected_range_value:.2f}"
         )
 
-        whipsaw_badge = (
-            '<span style="color: #dc2626; font-weight: bold;">'
-            '⚠️ 주의 (급반전 가능성 높음)'
-            '</span>'
-            if is_whipsaw_risk
-            else
-            '<span style="color: #059669; font-weight: bold;">'
-            '✅ 양호 (추세 연속 안정)'
-            '</span>'
-        )
+
+        if is_whipsaw_risk:
+
+            whipsaw_badge = (
+                '<span style="'
+                'color:#dc2626;'
+                'font-weight:bold;'
+                '">'
+                '⚠️ 주의 (급반전 가능성 높음)'
+                '</span>'
+            )
+
+        else:
+
+            whipsaw_badge = (
+                '<span style="'
+                'color:#059669;'
+                'font-weight:bold;'
+                '">'
+                '✅ 양호 (추세 연속 안정)'
+                '</span>'
+            )
+
+
+        # ==============================================================================
+        # 액션 플랜 HTML
+        # ==============================================================================
 
         html_content = f"""
 <div style="
@@ -1210,199 +1395,214 @@ try:
     box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
 ">
 
-<div style="
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid #f1f5f9;
-    padding-bottom: 12px;
-    margin-bottom: 16px;
-">
+    <div style="
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        border-bottom: 1px solid #f1f5f9;
+        padding-bottom: 12px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+    ">
 
-<div style="
-    font-size: 16px;
-    font-weight: 700;
-    color: {strategy_color};
-">
-{strategy_title}
-</div>
+        <div style="
+            font-size: 16px;
+            font-weight: 700;
+            color: {strategy_color};
+        ">
+            {strategy_title}
+        </div>
 
-<div style="
-    font-size: 12px;
-    color: #64748b;
-">
-휩소 리스크: {whipsaw_badge}
-</div>
+        <div style="
+            font-size: 12px;
+            color: #64748b;
+        ">
+            휩소 리스크: {whipsaw_badge}
+        </div>
 
-</div>
+    </div>
 
-<div style="
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 14px;
-    margin-bottom: 18px;
-">
 
-<div style="
-    background-color: #f8fafc;
-    padding: 12px 14px;
-    border-radius: 8px;
-    border-left: 4px solid #ef4444;
-    border-top: 1px solid #f1f5f9;
-    border-right: 1px solid #f1f5f9;
-    border-bottom: 1px solid #f1f5f9;
-">
+    <div style="
+        display: grid;
+        grid-template-columns:
+            repeat(auto-fit, minmax(180px, 1fr));
+        gap: 14px;
+        margin-bottom: 18px;
+    ">
 
-<span style="
-    font-size: 11px;
-    font-weight: 500;
-    color: #64748b;
-">
-단기 저항 / 1차 목표가
-</span>
 
-<div style="
-    font-size: 19px;
-    font-weight: 800;
-    color: #dc2626;
-    margin-top: 4px;
-">
-{upper_str}
-</div>
+        <div style="
+            background-color: #f8fafc;
+            padding: 12px 14px;
+            border-radius: 8px;
+            border-left: 4px solid #ef4444;
+            border-top: 1px solid #f1f5f9;
+            border-right: 1px solid #f1f5f9;
+            border-bottom: 1px solid #f1f5f9;
+        ">
 
-</div>
+            <span style="
+                font-size: 11px;
+                font-weight: 500;
+                color: #64748b;
+            ">
+                단기 저항 / 1차 목표가
+            </span>
 
-<div style="
-    background-color: #f8fafc;
-    padding: 12px 14px;
-    border-radius: 8px;
-    border-left: 4px solid #0ea5e9;
-    border-top: 1px solid #f1f5f9;
-    border-right: 1px solid #f1f5f9;
-    border-bottom: 1px solid #f1f5f9;
-">
+            <div style="
+                font-size: 19px;
+                font-weight: 800;
+                color: #dc2626;
+                margin-top: 4px;
+            ">
+                {upper_str}
+            </div>
 
-<span style="
-    font-size: 11px;
-    font-weight: 500;
-    color: #64748b;
-">
-예상 1시간 진폭
-</span>
+        </div>
 
-<div style="
-    font-size: 19px;
-    font-weight: 800;
-    color: #0284c7;
-    margin-top: 4px;
-">
-±{range_str}
-</div>
 
-</div>
+        <div style="
+            background-color: #f8fafc;
+            padding: 12px 14px;
+            border-radius: 8px;
+            border-left: 4px solid #0ea5e9;
+            border-top: 1px solid #f1f5f9;
+            border-right: 1px solid #f1f5f9;
+            border-bottom: 1px solid #f1f5f9;
+        ">
 
-<div style="
-    background-color: #f8fafc;
-    padding: 12px 14px;
-    border-radius: 8px;
-    border-left: 4px solid #10b981;
-    border-top: 1px solid #f1f5f9;
-    border-right: 1px solid #f1f5f9;
-    border-bottom: 1px solid #f1f5f9;
-">
+            <span style="
+                font-size: 11px;
+                font-weight: 500;
+                color: #64748b;
+            ">
+                예상 1시간 진폭
+            </span>
 
-<span style="
-    font-size: 11px;
-    font-weight: 500;
-    color: #64748b;
-">
-단기 지지 / 손절 기준선
-</span>
+            <div style="
+                font-size: 19px;
+                font-weight: 800;
+                color: #0284c7;
+                margin-top: 4px;
+            ">
+                ±{range_str}
+            </div>
 
-<div style="
-    font-size: 19px;
-    font-weight: 800;
-    color: #059669;
-    margin-top: 4px;
-">
-{lower_str}
-</div>
+        </div>
 
-</div>
 
-</div>
+        <div style="
+            background-color: #f8fafc;
+            padding: 12px 14px;
+            border-radius: 8px;
+            border-left: 4px solid #10b981;
+            border-top: 1px solid #f1f5f9;
+            border-right: 1px solid #f1f5f9;
+            border-bottom: 1px solid #f1f5f9;
+        ">
 
-<div style="
-    background-color: #f8fafc;
-    padding: 12px 16px;
-    border-radius: 8px;
-    margin-bottom: 12px;
-    border: 1px solid #f1f5f9;
-">
+            <span style="
+                font-size: 11px;
+                font-weight: 500;
+                color: #64748b;
+            ">
+                단기 지지 / 손절 기준선
+            </span>
 
-<div style="
-    display: flex;
-    justify-content: space-between;
-    font-size: 12px;
-    color: #475569;
-    margin-bottom: 6px;
-">
+            <div style="
+                font-size: 19px;
+                font-weight: 800;
+                color: #059669;
+                margin-top: 4px;
+            ">
+                {lower_str}
+            </div>
 
-<span style="font-weight: 600;">
-손절선 ({lower_str})
-</span>
+        </div>
 
-<span style="
-    color: #0284c7;
-    font-weight: 700;
-">
-현재 채널 위치: {channel_pos:.1f}%
-</span>
+    </div>
 
-<span style="font-weight: 600;">
-목표가 ({upper_str})
-</span>
 
-</div>
+    <div style="
+        background-color: #f8fafc;
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        border: 1px solid #f1f5f9;
+    ">
 
-<div style="
-    width: 100%;
-    background-color: #e2e8f0;
-    border-radius: 6px;
-    height: 10px;
-    overflow: hidden;
-    box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
-">
+        <div style="
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            font-size: 12px;
+            color: #475569;
+            margin-bottom: 6px;
+            flex-wrap: wrap;
+        ">
 
-<div style="
-    width: {channel_pos}%;
-    background: linear-gradient(
-        90deg,
-        #10b981 0%,
-        #0ea5e9 50%,
-        #ef4444 100%
-    );
-    height: 100%;
-">
-</div>
+            <span style="font-weight: 600;">
+                손절선 ({lower_str})
+            </span>
 
-</div>
+            <span style="
+                color: #0284c7;
+                font-weight: 700;
+            ">
+                현재 채널 위치: {channel_pos:.1f}%
+            </span>
 
-</div>
+            <span style="font-weight: 600;">
+                목표가 ({upper_str})
+            </span>
 
-<div style="
-    font-size: 13px;
-    color: #334155;
-    line-height: 1.6;
-    background-color: #f0fdf4;
-    padding: 10px 14px;
-    border-radius: 6px;
-    border: 1px solid #dcfce3;
-">
+        </div>
 
-💡 <b>행동 가이드:</b> {strategy_desc}
 
-</div>
+        <div style="
+            width: 100%;
+            background-color: #e2e8f0;
+            border-radius: 6px;
+            height: 10px;
+            overflow: hidden;
+            box-shadow:
+                inset 0 1px 2px rgba(0,0,0,0.05);
+        ">
+
+            <div style="
+                width: {channel_pos}%;
+                background:
+                    linear-gradient(
+                        90deg,
+                        #10b981 0%,
+                        #0ea5e9 50%,
+                        #ef4444 100%
+                    );
+                height: 100%;
+            ">
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <div style="
+        font-size: 13px;
+        color: #334155;
+        line-height: 1.6;
+        background-color: #f0fdf4;
+        padding: 10px 14px;
+        border-radius: 6px;
+        border: 1px solid #dcfce3;
+    ">
+
+        💡 <b>행동 가이드:</b>
+        {strategy_desc}
+
+    </div>
 
 </div>
 """
@@ -1412,8 +1612,9 @@ try:
             unsafe_allow_html=True
         )
 
+
         # ==============================================================================
-        # 11. 차트 렌더링
+        # 11. 차트
         # ==============================================================================
 
         time_labels = [
@@ -1423,11 +1624,13 @@ try:
 
         time_labels[-1] = "현재"
 
+
         future_labels = [
             "현재",
             "+30분",
             "+60분"
         ]
+
 
         future_upper = [
             current_price,
@@ -1438,6 +1641,7 @@ try:
             expected_upper
         ]
 
+
         future_lower = [
             current_price,
             float(
@@ -1446,6 +1650,11 @@ try:
             ),
             expected_lower
         ]
+
+
+        # ----------------------------------------------------------------------
+        # 자산별 색상
+        # ----------------------------------------------------------------------
 
         if SYMBOL == "GLD":
 
@@ -1462,10 +1671,12 @@ try:
             line_color = "#0ea5e9"
             marker_color = "#0284c7"
 
+
         fig = go.Figure()
 
+
         # ----------------------------------------------------------------------
-        # 실제 체결가
+        # 1) 실제 체결가
         # ----------------------------------------------------------------------
 
         fig.add_trace(
@@ -1485,8 +1696,9 @@ try:
             )
         )
 
+
         # ----------------------------------------------------------------------
-        # 예상 하단
+        # 2) 예상 하단
         # ----------------------------------------------------------------------
 
         fig.add_trace(
@@ -1504,8 +1716,9 @@ try:
             )
         )
 
+
         # ----------------------------------------------------------------------
-        # 예상 상단
+        # 3) 예상 상단 + 음영
         # ----------------------------------------------------------------------
 
         fig.add_trace(
@@ -1524,8 +1737,9 @@ try:
             )
         )
 
+
         # ----------------------------------------------------------------------
-        # 현재 시점 수직선
+        # 4) 현재 시점
         # ----------------------------------------------------------------------
 
         fig.add_shape(
@@ -1542,6 +1756,7 @@ try:
             )
         )
 
+
         fig.add_annotation(
             x="현재",
             y=1,
@@ -1556,17 +1771,31 @@ try:
             )
         )
 
+
         selected_past_ticks = [
             str(time_labels[idx])
             for idx in [
-                0, 3, 6, 9, 12, 15, 18, 21, 23
+                0,
+                3,
+                6,
+                9,
+                12,
+                15,
+                18,
+                21,
+                23
             ]
         ]
 
+
         custom_ticks = (
             selected_past_ticks
-            + ["+30분", "+60분"]
+            + [
+                "+30분",
+                "+60분"
+            ]
         )
+
 
         status_text = (
             "실시간"
@@ -1574,6 +1803,7 @@ try:
             else
             "직전 마감 기준"
         )
+
 
         fig.update_layout(
 
@@ -1638,10 +1868,12 @@ try:
             )
         )
 
+
         st.plotly_chart(
             fig,
             use_container_width=True
         )
+
 
         # ==============================================================================
         # 12. 하단 분석 메타정보
@@ -1656,14 +1888,19 @@ try:
                 f"`{in_rv:.4f}`"
             )
 
+
             annualized_vol = (
                 np.sqrt(
-                    max(pred_rv, 0.0)
+                    max(
+                        pred_rv,
+                        0.0
+                    )
                     * 252.0
                     * 6.5
                 )
                 * 100.0
             )
+
 
             st.write(
                 f"- **예측 1시간 선행 RV "
@@ -1673,12 +1910,14 @@ try:
                 f"`{annualized_vol:.2f}%`)"
             )
 
+
             st.write(
                 f"- **자산별 스케일 오프셋:** "
                 f"`+{offset_val:.2f}` "
                 f"(보정 후 RV: "
                 f"`{adjusted_log_rv:.4f}`)"
             )
+
 
             st.write(
                 f"- **FPCA 주성분 계수 (1~3):** "
@@ -1687,9 +1926,11 @@ try:
                 f"{float(fpc_scores[2]):.4f}`"
             )
 
+
             st.caption(
                 "시세 데이터는 60초 주기로 자동 캐싱 갱신됩니다."
             )
+
 
     else:
 
@@ -1698,6 +1939,11 @@ try:
             f"(확보: {len(prices)}개 / 필요: 24개). "
             f"장 개시 직후이거나 시세 수신 대기 상태입니다."
         )
+
+
+# ==============================================================================
+# 13. 전체 오류 처리
+# ==============================================================================
 
 except Exception as e:
 
@@ -1712,3 +1958,4 @@ except Exception as e:
         st.code(
             traceback.format_exc()
         )
+
