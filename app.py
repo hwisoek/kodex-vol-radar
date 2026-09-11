@@ -323,10 +323,8 @@ try:
         # ==============================================================================
         # 10. 차트 렌더링
         # ==============================================================================
-        time_labels = []
-        for i in range(24):
-            minute_offset = (23 - i) * 5
-            time_labels.append(f"-{minute_offset}분" if minute_offset > 0 else "현재")
+        time_labels = [f"-{(23 - int(i)) * 5}분" for i in range(24)]
+        time_labels[-1] = "현재"
 
         future_labels = ["현재", "+30분", "+60분"]
         future_upper = [current_price, float(current_price + (expected_range_value * 0.7)), expected_upper]
@@ -372,26 +370,31 @@ try:
             fillcolor='rgba(56, 189, 248, 0.12)'
         ))
 
-        # 4) 현재 시점 기준선 (수직 점선)
-        fig.add_vline(
-            x="현재",
-            line_width=1.5,
-            line_dash="dash",
-            line_color="#e2e8f0",
-            annotation_text="기준점",
-            annotation_position="top left",
-            annotation_font=dict(size=10, color="#94a3b8")
+        # 4) 현재 시점 기준 수직 점선 (add_vline 대신 카테고리 축 지원 add_shape 사용)
+        fig.add_shape(
+            type="line",
+            x0="현재",
+            x1="현재",
+            y0=0,
+            y1=1,
+            yref="paper",
+            line=dict(color="#e2e8f0", width=1.5, dash="dash")
         )
 
-        custom_ticks = [
-            time_labels[0],
-            time_labels[6],
-            time_labels[12],
-            time_labels[18],
-            "현재",
-            "+30분",
-            "+60분"
-        ]
+        # 수직선 라벨 어노테이션 분리
+        fig.add_annotation(
+            x="현재",
+            y=1,
+            yref="paper",
+            text="기준점",
+            showarrow=False,
+            xanchor="right",
+            yanchor="top",
+            font=dict(size=10, color="#94a3b8")
+        )
+
+        selected_past_ticks = [str(time_labels[idx]) for idx in [0, 3, 6, 9, 12, 15, 18, 21, 23]]
+        custom_ticks = selected_past_ticks + ["+30분", "+60분"]
 
         status_text = "실시간" if is_open else "직전 마감 기준"
         fig.update_layout(
