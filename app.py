@@ -109,42 +109,10 @@ TICKER_MAP = {
     "LABD (바이오 -3배 인버스)": {"symbol": "LABD", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
 
     # --------------------------------------------------------------------------
-    # 5. 원자재, 채권, 안전자산 ETF (10개)
+    # 5. 원자재, 채권, 안전자산 ETF (4개)
     # --------------------------------------------------------------------------
     "GLD (SPDR 글로벌 금 ETF)": {"symbol": "GLD", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
     "SLV (iShares 글로벌 은 ETF)": {"symbol": "SLV", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-    "USO (미국 WTI 원유 펀드)": {"symbol": "USO", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-    "UNG (미국 천연가스 펀드)": {"symbol": "UNG", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-    "TLT (미국 20년+ 장기국채 ETF)": {"symbol": "TLT", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "TMF (미국 20년+ 국채 3배 레버리지)": {"symbol": "TMF", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-    "TMV (미국 20년+ 국채 -3배 인버스)": {"symbol": "TMV", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-    "HYG (미국 하이일드 회사채 ETF)": {"symbol": "HYG", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-    "UUP (미국 달러 인덱스 강세 ETF)": {"symbol": "UUP", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-    "CPER (미국 구리 선물 ETF)": {"symbol": "CPER", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE Arca"},
-
-    # --------------------------------------------------------------------------
-    # 6. 미국 빅테크 / M7 및 반도체 핵심주 (22개)
-    # --------------------------------------------------------------------------
-    "엔비디아 (NVDA)": {"symbol": "NVDA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "테슬라 (TSLA)": {"symbol": "TSLA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "애플 (AAPL)": {"symbol": "AAPL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "마이크로소프트 (MSFT)": {"symbol": "MSFT", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "구글 알파벳 A (GOOGL)": {"symbol": "GOOGL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "아마존 (AMZN)": {"symbol": "AMZN", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "메타 플랫폼스 (META)": {"symbol": "META", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "TSMC ADR (TSM)": {"symbol": "TSM", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NYSE"},
-    "브로드컴 (AVGO)": {"symbol": "AVGO", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "AMD (어드밴스드 마이크로 디바이스)": {"symbol": "AMD", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "ASML 홀딩 (ASML)": {"symbol": "ASML", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "퀄컴 (QCOM)": {"symbol": "QCOM", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "인텔 (INTC)": {"symbol": "INTC", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "마이크론 테크놀로지 (MU)": {"symbol": "MU", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "어플라이드 머티어리얼즈 (AMAT)": {"symbol": "AMAT", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "램리서치 (LRCX)": {"symbol": "LRCX", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "암 홀딩스 (ARM)": {"symbol": "ARM", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "슈퍼마이크로컴퓨터 (SMCI)": {"symbol": "SMCI", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "텍사스 인스트루먼트 (TXN)": {"symbol": "TXN", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
-    "온세미컨덕터 (ON)": {"symbol": "ON", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
     "마벨 테크놀로지 (MRVL)": {"symbol": "MRVL", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
     "KLA 코퍼레이션 (KLAC)": {"symbol": "KLAC", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"},
 
@@ -181,7 +149,6 @@ TICKER_MAP = {
     "모더나 (MRNA)": {"symbol": "MRNA", "currency": "$", "is_kr": False, "trading_hours": 6.5, "tz": "America/New_York", "market_name": "미국 NASDAQ"}
 }
 
-# 이름 타이핑으로 자동완성 검색 + 최대 3개 선택 제한
 selected_names = st.sidebar.multiselect(
     "모니터링 자산 선택 (최대 3개)",
     options=list(TICKER_MAP.keys()),
@@ -465,11 +432,11 @@ for tab, asset_name in zip(tabs, selected_names):
 
                 recent_return = (current_price - prices[0]) / prices[0]
                 trend_intensity = float(np.tanh(recent_return / 0.005))
-                drift_val = float(expected_range_value * 0.35 * trend_intensity)
+                drift_val = float(expected_range_value * 0.15 * trend_intensity)
 
                 expected_upper = float(current_price + drift_val + expected_range_value)
                 expected_lower = float(current_price + drift_val - expected_range_value)
-                
+
                 reward_dist = max(expected_upper - current_price, 1e-5)
                 risk_dist = max(current_price - expected_lower, 1e-5)
                 rr_ratio = float(reward_dist / risk_dist)
@@ -570,7 +537,9 @@ for tab, asset_name in zip(tabs, selected_names):
 
                 # 메타정보
                 trading_h = float(target_info.get("trading_hours", 6.5))
-                annualized_vol = float(np.sqrt(max(pred_rv, 0.0) * 252.0 * trading_h) * 100.0)
+                daily_scale = trading_h / 2.0
+                annualized_vol = float(np.sqrt(max(pred_rv, 0.0) * daily_scale * 252.0) * 100.0)
+
                 with st.expander(f"{asset_name} 모형 상태 및 FPCA 특징치"):
                     st.write(f"- **현재 2시간 관측 실현 변동성 ($\\ln RV_t$):** `{in_rv:.4f}`")
                     st.write(f"- **예측 1시간 선행 RV ($\\ln \\widehat{{RV}}_{{t+1}}$):** `{adjusted_log_rv:.4f}` (연환산 변동성: `{annualized_vol:.2f}%`)")
