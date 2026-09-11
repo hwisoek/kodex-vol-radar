@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 from scipy.interpolate import make_interp_spline
 
 # ==============================================================================
-# 1. 페이지 레이아웃 설정
+# 1. 페이지 레이아웃 및 메타 설정
 # ==============================================================================
 st.set_page_config(
     page_title="KODEX 200 장중 변동성 위험 레이더",
@@ -33,7 +33,7 @@ try:
     V_comp = artifacts["V_comp"]           # (3, 24)
     scaler = artifacts["scaler"]           # StandardScaler
     model = artifacts["model"]             # Ridge
-    rv_history = artifacts["rv_history"]   # 과거 RV 분포
+    rv_history = np.array(artifacts["rv_history"])  # 과거 ln(RV) 분포
     t_grid = np.linspace(0, 1, 24)
 except Exception as e:
     st.error(f"모델 아티팩트 로드 실패: {e}")
@@ -45,10 +45,9 @@ except Exception as e:
 @st.cache_data(ttl=60)
 def fetch_recent_5m_candles():
     """
-    해외 클라우드 서버(Streamlit Cloud)에서 안정적으로 KODEX 200(069500.KS)
-    최근 24개 5분봉(2시간) 종가를 가져오는 함수
+    클라우드 환경에서 KODEX 200(069500.KS) 최근 24개 5분봉(2시간) 종가 수집
     """
-    # 1차 시도: yfinance (글로벌 CDN 기반, 해외 IP 차단 없음)
+    # 1차 시도: yfinance
     try:
         ticker = yf.Ticker("069500.KS")
         df_yf = ticker.history(period="5d", interval="5m")
@@ -59,7 +58,7 @@ def fetch_recent_5m_candles():
     except Exception as e:
         print(f"yfinance 수집 실패, 대체 소스로 전환: {e}")
 
-    # 2차 시도: 네이버 금융 XML 차트 엔드포인트
+    # 2차 시도: 네이버 금융 XML 차트 API
     try:
         url = "https://fchart.stock.naver.com/sise.nhn?symbol=069500&timeframe=minute&count=120&requestType=0"
         headers = {
@@ -98,18 +97,19 @@ try:
         centered = smoothed - mu_curve
         fpc_scores = centered @ V_comp.T  # (3,)
         
-        # 3) 기준 벤치마크: 최근 2시간(입력 윈도우) 실현변동성
+        # 3) 기준 벤치마크: 최근 2시간(입력 윈도우) 실현변동성 ln(RV_t)
         in_log_ret = np.diff(np.log(prices))
         in_rv = np.log(np.sum(in_log_ret**2) + 1e-8)
         
-        # 4) 피처 결합 및 1시간 후 실현변동성(RV) 예측
+        # 4) 피처 결합 및 1시간 후 실현변동성 ln(RV_{t+1}) 예측
         X = np.hstack([in_rv, fpc_scores]).reshape(1, -1)
         X_scaled = scaler.transform(X)
-        pred_log_rv = model.predict(X_scaled)[0]
+        pred_log_rv = float(model.predict(X_scaled)[0])
         pred_rv = float(np.exp(pred_log_rv))
         
-        # 5) 과거 RV 분포 기반 백분위 위험 점수 (0 ~ 100)
-        risk_score = float(np.mean(rv_history <= pred_rv) * 100)
+        # 5) 위험 점수 백분위 산출 (단위 일치: ln(RV) 끼리 비교)
+        # rv_history가 로그 스케일이므로 pred_log_rv와 직접 비교
+        risk_score = float(np.mean(rv_history <= pred_log_rv) * 100)
         
         # 위험 등급 판정
         if risk_score >= 80:
@@ -162,6 +162,7 @@ try:
         # 하단 분석 메타정보
         with st.expander("모형 상태 및 입력 특징치 세부정보"):
             st.write(f"- **현재 2시간 기준 RV ($\ln RV_t$):** `{in_rv:.4f}`")
+            st.write(f"- **예측 1시간 선행 RV ($\ln \widehat{{RV}}_{{t+1}}$):** `{pred_log_rv:.4f}`")
             st.write(f"- **FPCA 주성분 점수 (FPC 1, 2, 3):** `{fpc_scores[0]:.4f}, {fpc_scores[1]:.4f}, {fpc_scores[2]:.4f}`")
             st.caption("시세 데이터는 60초 캐싱 주기로 실시간 갱신됩니다.")
             
