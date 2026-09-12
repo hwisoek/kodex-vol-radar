@@ -697,52 +697,133 @@ if display_targets:
             </div>
             """, unsafe_allow_html=True)
 
-            # 인터랙티브 시계열 차트
+            from datetime import datetime, timedelta
+import plotly.graph_objects as go
+import streamlit as st
+
+# ------------------------------------------------------------------------------
+# 1. 타임라인 라벨 동적 생성 (실제 시간 기반)
+# ------------------------------------------------------------------------------
+# data에 'timestamps' (datetime 객체 또는 'YYYY-MM-DD HH:MM' 문자열 리스트)가 있다고 가정
+# 만약 없다면 현재/마감 시점 기준으로 역산하되 날짜 구분 추가
+raw_times = data.get("timestamps", None)
+
+if raw_times:
+    # 날짜가 바뀌는 구간 체크 (예: 어제 데이터면 '09/11 15:30', 오늘이면 '09:05')
+    time_labels = []
+    for t in raw_times:
+        dt = pd.to_datetime(t)
+        # 오늘 날짜와 다르면 'MM/DD HH:MM', 오늘이면 'HH:MM'
+        if dt.date() < datetime.now().date():
+            time_labels.append(dt.strftime("%m/%d %H:%M"))
+        else:
+            time_labels.append(dt.strftime("%H:%M"))
+else:
+    # timestamps가 없을 경우 fallback (개장 경과 시간에 따른 상대/절대 분기)
+    time_labels = [f"-{(23 - int(i)) * 5}분" for i in range(23)] + ["현재"]
+
+# 미래 예측 라벨 (현재 시각 + 30분, +60분 실제 시각으로 표기)
+last_time_label = time_labels[-1]
+future_labels = [last_time_label, "+30분 (예측)", "+60분 (예측)"]
+
+# ------------------------------------------------------------------------------
+# 2. 데이터 및 차트 생성
+# ------------------------------------------------------------------------------
 prices = data["prices"]
 drift_val = data["drift_val"]
 
-# ✅ 장 상태에 따라 기준 텍스트와 접두사 동적 할당
-base_text = "현재" if is_open else "장 마감"
-prefix = "" if is_open else "마감 "
-
-# 라벨 생성 시 접두어 반영 (예: 마감 -115분, 마감 -110분 ... 장 마감)
-time_labels = [f"{prefix}-{(23 - int(i)) * 5}분" for i in range(23)] + [base_text]
-future_labels = [base_text, f"{prefix}+30분", f"{prefix}+60분"]
-
-future_upper = [current_price, float(current_price + (drift_val * 0.5) + (expected_range_value * 0.7)), expected_upper]
-future_lower = [current_price, float(current_price + (drift_val * 0.5) - (expected_range_value * 0.7)), expected_lower]
+future_upper = [
+    current_price,
+    float(current_price + (drift_val * 0.5) + (expected_range_value * 0.7)),
+    expected_upper,
+]
+future_lower = [
+    current_price,
+    float(current_price + (drift_val * 0.5) - (expected_range_value * 0.7)),
+    expected_lower,
+]
 
 fig = go.Figure()
-fig.add_trace(go.Scatter(x=time_labels, y=prices, mode="lines+markers", name="실제 체결가",
-                         line=dict(color="#0ea5e9", width=2.5), marker=dict(size=6, color="#0284c7")))
-fig.add_trace(go.Scatter(x=future_labels, y=future_lower, mode="lines", name="예상 하한 (-1σ)",
-                         line=dict(color="rgba(16,185,129,0.8)", width=1.5, dash="dot"), showlegend=True))
-fig.add_trace(go.Scatter(x=future_labels, y=future_upper, mode="lines", name="예상 상한 (+1σ)",
-                         line=dict(color="rgba(239,68,68,0.8)", width=1.5, dash="dot"),
-                         fill="tonexty", fillcolor="rgba(14,165,233,0.1)"))
 
-# ✅ 수직선 위치를 '현재' 대신 동적 텍스트(base_text)로 수정
-fig.add_shape(type="line", x0=base_text, x1=base_text, y0=0, y1=1, yref="paper", line=dict(color="#94a3b8", width=1.5, dash="dash"))
+# 실제 체결가
+fig.add_trace(
+    go.Scatter(
+        x=time_labels,
+        y=prices,
+        mode="lines+markers",
+        name="실제 체결가",
+        line=dict(color="#0ea5e9", width=2.5),
+        marker=dict(size=6, color="#0284c7"),
+    )
+)
 
-selected_past_ticks = [str(time_labels[idx]) for idx in [0, 3, 6, 9, 12, 15, 18, 21, 23]]
-custom_ticks = selected_past_ticks + [f"{prefix}+30분", f"{prefix}+60분"]
+# 예측 하한 (-1σ)
+fig.add_trace(
+    go.Scatter(
+        x=future_labels,
+        y=future_lower,
+        mode="lines",
+        name="예상 하한 (-1σ)",
+        line=dict(color="rgba(16,185,129,0.8)", width=1.5, dash="dot"),
+        showlegend=True,
+    )
+)
+
+# 예측 상한 (+1σ) & 밴드 채우기
+fig.add_trace(
+    go.Scatter(
+        x=future_labels,
+        y=future_upper,
+        mode="lines",
+        name="예상 상한 (+1σ)",
+        line=dict(color="rgba(239,68,68,0.8)", width=1.5, dash="dot"),
+        fill="tonexty",
+        fillcolor="rgba(14,165,233,0.1)",
+    )
+)
+
+# 현재 시점 기준선
+fig.add_shape(
+    type="line",
+    x0=last_time_label,
+    x1=last_time_label,
+    y0=0,
+    y1=1,
+    yref="paper",
+    line=dict(color="#94a3b8", width=1.5, dash="dash"),
+)
+
+# ------------------------------------------------------------------------------
+# 3. 눈금(Ticks) 및 레이아웃 정리
+# ------------------------------------------------------------------------------
+# 3~4칸 간격으로 눈금 축약 (글자 겹침 방지)
+stride = 4
+selected_past_ticks = [time_labels[i] for i in range(0, len(time_labels) - 1, stride)]
+if last_time_label not in selected_past_ticks:
+    selected_past_ticks.append(last_time_label)
+
+custom_ticks = selected_past_ticks + ["+30분 (예측)", "+60분 (예측)"]
 status_text = "실시간" if is_open else "직전 마감 기준"
 
 fig.update_layout(
-    title=dict(text=f"{asset_name} - 2시간 궤적 & 1시간 예측 밴드 ({status_text})", font=dict(size=15, color="#1e293b")),
-    xaxis=dict(title="타임라인", tickmode="array", tickvals=custom_ticks, gridcolor="#f1f5f9"),
+    title=dict(
+        text=f"{asset_name} - 2시간 궤적 & 1시간 예측 밴드 ({status_text})",
+        font=dict(size=15, color="#1e293b"),
+    ),
+    xaxis=dict(
+        title="타임라인",
+        type="category",  # 💡 문자열 카테고리로 고정해 야간 공백(Gap) 없이 연속 출력
+        tickmode="array",
+        tickvals=custom_ticks,
+        gridcolor="#f1f5f9",
+    ),
     yaxis=dict(title=f"가격 ({CURRENCY})", gridcolor="#f1f5f9"),
-    plot_bgcolor="#ffffff", paper_bgcolor="rgba(0,0,0,0)", template="plotly_white", height=420,
-    margin=dict(l=15, r=15, t=50, b=15), hovermode="x unified"
+    plot_bgcolor="#ffffff",
+    paper_bgcolor="rgba(0,0,0,0)",
+    template="plotly_white",
+    height=420,
+    margin=dict(l=15, r=15, t=50, b=15),
+    hovermode="x unified",
 )
+
 st.plotly_chart(fig, use_container_width=True)
-
-trading_h = float(target_info.get("trading_hours", 6.5))
-daily_scale = trading_h / 2.0
-annualized_vol = float(np.sqrt(max(data["pred_rv"], 0.0) * daily_scale * 252.0) * 100.0)
-
-with st.expander(f"{asset_name} 모형 상태 및 FPCA 특징치"):
-    st.write(f"- **현재 2시간 관측 실현 변동성 ($\\ln RV_t$):** `{data['in_rv']:.4f}`")
-    st.write(f"- **예측 1시간 선행 RV ($\\ln \\widehat{{RV}}_{{t+1}}$):** `{data['adjusted_log_rv']:.4f}` (연환산 변동성: `{annualized_vol:.2f}%`)")
-    st.write(f"- **동적 레벨 보정치 (Local Offset):** `{data['dynamic_asset_offset']:+.4f}`")
-    st.write(f"- **FPCA 주성분 계수 (1~3):** `{float(data['fpc_scores'][0]):.4f}, {float(data['fpc_scores'][1]):.4f}, {float(data['fpc_scores'][2]):.4f}`")
