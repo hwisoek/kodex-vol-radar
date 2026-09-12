@@ -702,32 +702,56 @@ import plotly.graph_objects as go
 import streamlit as st
 
 # ------------------------------------------------------------------------------
-# 1. 타임라인 라벨 동적 생성 (실제 시간 기반)
+# 1. 타임라인 라벨 동적 자동 계산 (실제 시각 기준)
 # ------------------------------------------------------------------------------
-# data에 'timestamps' (datetime 객체 또는 'YYYY-MM-DD HH:MM' 문자열 리스트)가 있다고 가정
-# 만약 없다면 현재/마감 시점 기준으로 역산하되 날짜 구분 추가
-raw_times = data.get("timestamps", None)
+is_kr = target_info.get("currency", CURRENCY) == "원"
 
-if raw_times:
-    # 날짜가 바뀌는 구간 체크 (예: 어제 데이터면 '09/11 15:30', 오늘이면 '09:05')
-    time_labels = []
-    for t in raw_times:
-        dt = pd.to_datetime(t)
-        # 오늘 날짜와 다르면 'MM/DD HH:MM', 오늘이면 'HH:MM'
-        if dt.date() < datetime.now().date():
-            time_labels.append(dt.strftime("%m/%d %H:%M"))
-        else:
-            time_labels.append(dt.strftime("%H:%M"))
+# [CASE A] 장 마감 상태 (직전 정규장 마감 시각 기준 역산)
+if not is_open:
+    # 국장 종가 15:30, 미장 종가 16:00 기준
+    close_h, close_m = (15, 30) if is_kr else (16, 0)
+    base_dt = datetime.now().replace(
+        hour=close_h, minute=close_m, second=0, microsecond=0
+    )
+
+    # 마감 시점 기준 과거 24개 5분봉 시각 계산 (13:35 ~ 15:30)
+    time_labels = [
+        (base_dt - timedelta(minutes=(23 - i) * 5)).strftime("%H:%M")
+        for i in range(24)
+    ]
+    last_time_label = time_labels[-1]  # '15:30'
+
+    # 장 마감 후 예측 밴드는 익일 개장 기준 표기
+    next_open_str = "익일 09:30" if is_kr else "익일 10:00"
+    next_open_plus_str = "익일 10:00" if is_kr else "익일 10:30"
+    future_labels = [
+        last_time_label,
+        f"{next_open_str} (예측)",
+        f"{next_open_plus_str} (예측)",
+    ]
+
+# [CASE B] 장 중 실시간 상태 (현재 시각 기준 5분 단위 역산)
 else:
-    # timestamps가 없을 경우 fallback (개장 경과 시간에 따른 상대/절대 분기)
-    time_labels = [f"-{(23 - int(i)) * 5}분" for i in range(23)] + ["현재"]
+    now = datetime.now()
+    # 현재 분을 5분 단위로 버림 정렬
+    base_dt = now.replace(
+        minute=(now.minute // 5) * 5, second=0, microsecond=0
+    )
 
-# 미래 예측 라벨 (현재 시각 + 30분, +60분 실제 시각으로 표기)
-last_time_label = time_labels[-1]
-future_labels = [last_time_label, "+30분 (예측)", "+60분 (예측)"]
+    time_labels = [
+        (base_dt - timedelta(minutes=(23 - i) * 5)).strftime("%H:%M")
+        for i in range(24)
+    ]
+    last_time_label = time_labels[-1]
+
+    future_labels = [
+        last_time_label,
+        (base_dt + timedelta(minutes=30)).strftime("%H:%M (예측)"),
+        (base_dt + timedelta(minutes=60)).strftime("%H:%M (예측)"),
+    ]
 
 # ------------------------------------------------------------------------------
-# 2. 데이터 및 차트 생성
+# 2. 가격 데이터 및 차트 생성
 # ------------------------------------------------------------------------------
 prices = data["prices"]
 drift_val = data["drift_val"]
@@ -757,7 +781,7 @@ fig.add_trace(
     )
 )
 
-# 예측 하한 (-1σ)
+# 예상 하한선 (-1σ)
 fig.add_trace(
     go.Scatter(
         x=future_labels,
@@ -769,7 +793,7 @@ fig.add_trace(
     )
 )
 
-# 예측 상한 (+1σ) & 밴드 채우기
+# 예상 상한선 (+1σ) & 밴드 영역 채우기
 fig.add_trace(
     go.Scatter(
         x=future_labels,
@@ -782,7 +806,7 @@ fig.add_trace(
     )
 )
 
-# 현재 시점 기준선
+# 기준 구분선 (실시간/마감 분기점)
 fig.add_shape(
     type="line",
     x0=last_time_label,
@@ -794,15 +818,13 @@ fig.add_shape(
 )
 
 # ------------------------------------------------------------------------------
-# 3. 눈금(Ticks) 및 레이아웃 정리
+# 3. X축 눈금(Ticks) 및 레이아웃
 # ------------------------------------------------------------------------------
-# 3~4칸 간격으로 눈금 축약 (글자 겹침 방지)
-stride = 4
-selected_past_ticks = [time_labels[i] for i in range(0, len(time_labels) - 1, stride)]
-if last_time_label not in selected_past_ticks:
-    selected_past_ticks.append(last_time_label)
-
-custom_ticks = selected_past_ticks + ["+30분 (예측)", "+60분 (예측)"]
+# 4칸 간격(20분 주기)으로 라벨 추출
+selected_past_ticks = [
+    time_labels[idx] for idx in [0, 4, 8, 12, 16, 20, 23]
+]
+custom_ticks = selected_past_ticks + future_labels[1:]
 status_text = "실시간" if is_open else "직전 마감 기준"
 
 fig.update_layout(
@@ -812,7 +834,7 @@ fig.update_layout(
     ),
     xaxis=dict(
         title="타임라인",
-        type="category",  # 💡 문자열 카테고리로 고정해 야간 공백(Gap) 없이 연속 출력
+        type="category",  # 범주형으로 설정하여 불필요한 공백 제거
         tickmode="array",
         tickvals=custom_ticks,
         gridcolor="#f1f5f9",
