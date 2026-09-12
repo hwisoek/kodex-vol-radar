@@ -1063,43 +1063,38 @@ def process_single_asset(asset_name, target_info):
         )
 
         # ----------------------------------------------------------------------
-        # 60일 1시간봉 기반 [ML 변동성 예측 & 레짐 가이드] 백테스팅 연산 (안전 버전)
-        # ----------------------------------------------------------------------
-        # ----------------------------------------------------------------------
-        # 60일 1시간봉 기반 [ML 변동성 예측 & 레짐 가이드] 백테스팅 연산
+        # 단기(5분봉 장중 스캘핑/데이트레이딩) 기반 ML 변동성 가이드 백테스팅
         # ----------------------------------------------------------------------
         trade_returns = []
         try:
-            h_data = fetch_recent_1h_candles(symbol)
-            if h_data is not None and "close" in h_data and len(h_data["close"]) >= 30:
-                h_prices = np.array(h_data["close"], dtype=float)
-                s_prices = pd.Series(h_prices)
+            # prices: 이미 상단에서 가져온 최근 5분봉 배열 (24개 이상)
+            if prices is not None and len(prices) >= 24:
+                m5_prices = np.array(prices, dtype=float)
+                s_prices = pd.Series(m5_prices)
 
-                # 1. 1시간봉 기준 12봉 롤링 실현 변동성 계산
+                # 단기 롤링 변동성 (최근 6개 봉 = 30분 기준)
                 pct_chg = s_prices.pct_change().fillna(0.0)
-                rolling_rv = (pct_chg**2).rolling(12, min_periods=3).mean().fillna(1e-5).values
-                pred_sigmas = np.sqrt(np.maximum(rolling_rv, 1e-6))
+                rolling_rv = (pct_chg**2).rolling(6, min_periods=2).mean().fillna(1e-6).values
+                short_sigma = np.sqrt(np.maximum(rolling_rv, 1e-7))
+                rv_threshold = float(np.nanpercentile(short_sigma, 80))
 
-                # 변동성 폭발 상위 20% 임계값
-                rv_threshold = float(np.nanpercentile(pred_sigmas, 80))
+                # 단기 중심선(5봉 EMA) 및 동적 밴드
+                mid_line = s_prices.ewm(span=5).mean().values
+                dyn_lower = mid_line * (1.0 - short_sigma)
+                dyn_upper = mid_line * (1.0 + short_sigma)
 
-                # 2. 10봉 EMA 기반 중심선 및 동적 변동성 밴드
-                mid_line = s_prices.ewm(span=10).mean().values
-                dyn_lower = mid_line * (1.0 - pred_sigmas)
-                dyn_upper = mid_line * (1.0 + pred_sigmas)
-
-                stop_loss_limit = -0.020
-                max_holding_bars = 12
+                # 단기 타이트 손익비 설정 (단기 매매에 맞게 손절 -0.8%, 최대 4봉/20분 보유)
+                short_stop_loss = -0.008
+                max_holding_bars = 4
 
                 position = None
                 entry_price = 0.0
                 holding_period = 0
 
-                # 15번째 봉부터 시뮬레이션
-                for i in range(15, len(h_prices)):
-                    curr_p = h_prices[i]
-                    prev_p = h_prices[i - 1]
-                    curr_sigma = pred_sigmas[i]
+                for i in range(6, len(m5_prices)):
+                    curr_p = m5_prices[i]
+                    prev_p = m5_prices[i - 1]
+                    curr_sigma = short_sigma[i]
 
                     if position is None:
                         is_calm = curr_sigma < rv_threshold
@@ -1114,7 +1109,7 @@ def process_single_asset(asset_name, target_info):
                         current_pnl = (curr_p - entry_price) / entry_price
 
                         is_tp = curr_p >= dyn_upper[i]
-                        is_sl = current_pnl <= stop_loss_limit
+                        is_sl = current_pnl <= short_stop_loss
                         is_spike = curr_sigma >= rv_threshold
                         is_timeout = holding_period >= max_holding_bars
 
@@ -1123,7 +1118,7 @@ def process_single_asset(asset_name, target_info):
                             position = None
 
                 if position == "LONG":
-                    trade_returns.append(float((h_prices[-1] - entry_price) / entry_price))
+                    trade_returns.append(float((m5_prices[-1] - entry_price) / entry_price))
         except Exception:
             trade_returns = []
 
@@ -1310,27 +1305,14 @@ with tab_us:
         height=340,
     )
 # ------------------------------------------------------------------------------
-# 8-1.5. [선택지 2] 유니버스 전체 통합 ML 동적 변동성 밴드 검증 패널 (파생/인버스 필터 적용)
+# 8-1.5. [단기] 유니버스 전체 통합 ML 동적 변동성 밴드 검증 패널
 # ------------------------------------------------------------------------------
 st.markdown("---")
-with st.expander("🔬 [유니버스 전체 통합] ML 동적 변동성 밴드 & 레짐 가이드 신뢰도 검정 (현물/정방향 자산 기준)", expanded=True):
+with st.expander("⚡ [유니버스 전체 통합] 초단기(장중) ML 변동성 밴드 & 레짐 가이드 검정", expanded=True):
     all_trades = []
     assets_with_trades = 0
-    excluded_assets = []
-
-    # 파생 음의 복리(Vol Drag) 왜곡 종목 필터링 키워드
-    derivative_keywords = ["인버스", "inverse", "2x", "곱버스", "bear", "short", "선물"]
 
     for d in full_ranked:
-        name = d.get("asset_name", "").lower()
-        symbol = str(d.get("target_info", {}).get("symbol", "")).lower()
-
-        # 인버스 및 고배율 레버리지 상품 제외
-        is_derivative = any(k in name or k in symbol for k in derivative_keywords)
-        if is_derivative:
-            excluded_assets.append(d.get("asset_name"))
-            continue
-
         trades = d.get("trade_returns", [])
         if len(trades) > 0:
             all_trades.extend(trades)
@@ -1340,7 +1322,8 @@ with st.expander("🔬 [유니버스 전체 통합] ML 동적 변동성 밴드 &
     N_total = len(all_trades)
 
     if N_total >= 10:
-        rf_per_trade = (0.035 / 252.0) * (4.0 / 6.5)
+        # 단기 거래(약 20분 보유) 기회비용 차감
+        rf_per_trade = (0.035 / (252.0 * 6.5 * 3)) 
         pooled_excess = all_trades - rf_per_trade
 
         B = 10000
@@ -1358,28 +1341,28 @@ with st.expander("🔬 [유니버스 전체 통합] ML 동적 변동성 밴드 &
         ci_upper_total = float(np.percentile(raw_means, 97.5))
 
         u1, u2, u3, u4 = st.columns(4)
-        u1.metric(f"통합 표본 수 ({assets_with_trades}개 자산)", f"{N_total:,}회", delta=f"평균 승률: {win_rate_total:.1f}%")
-        u2.metric("전체 건당 평균 초과수익", f"{actual_mean_total * 100:+.2f}%")
+        u1.metric(f"단기 체결 표본 ({assets_with_trades}개 자산)", f"{N_total:,}회", delta=f"승률: {win_rate_total:.1f}%")
+        u2.metric("건당 평균 초과수익", f"{actual_mean_total * 100:+.2f}%")
         u3.metric(
-            "통합 전략 p-value",
+            "단기 통합 p-value",
             f"{pooled_p_val:.4f}",
-            delta="★ 모델 알파 유의 (p < 0.05)" if pooled_p_val < 0.05 else ("유의 경향성 (p < 0.10)" if pooled_p_val < 0.10 else "유의성 검증 중"),
+            delta="★ 통계적 알파 유효 (p < 0.05)" if pooled_p_val < 0.05 else ("유의 경향성 (p < 0.10)" if pooled_p_val < 0.10 else "유의성 검증 중"),
             delta_color="normal" if pooled_p_val < 0.10 else "off"
         )
-        u4.metric("통합 95% 신뢰구간", f"[{ci_lower_total*100:+.2f}%, {ci_upper_total*100:+.2f}%]")
+        u4.metric("95% 신뢰구간", f"[{ci_lower_total*100:+.2f}%, {ci_upper_total*100:+.2f}%]")
 
         st.markdown(
             f"""
             <div style="font-size: 13px; color: #1e293b; line-height: 1.6; background-color: #f8fafc; padding: 12px 16px; border-radius: 8px; border: 1px solid #e2e8f0; margin-top: 10px;">
-                🔬 <b>정제된 현물/대표 자산 기반 퀀트 검증:</b><br>
-                - 음의 복리(Vol Drag)로 인해 평균 회귀 메커니즘이 성립하지 않는 인버스/파생형 자산({len(excluded_assets)}개)을 제외하고, <b>순수 현물 및 정방향 자산 {assets_with_trades}개</b>를 대상으로 검정했어.<br>
-                - 총 <b>{N_total:,}회</b>의 타점을 1만 회 부트스트랩 비모수 검정한 결과 단측 p-value는 <b>{pooled_p_val:.4f}</b>로 산출되었어.
+                ⚡ <b>장중 초단기 변동성 반등 퀀트 검증:</b><br>
+                - 본래 모델의 호흡에 맞춰 <b>5분봉 기준 장중 20분 내 동적 변동성 밴드 반등 및 레짐 필터</b>를 시뮬레이션했어.<br>
+                - 장기 우하향 드리프트나 오버나잇 노이즈가 차단된 총 <b>{N_total:,}회</b>의 초단기 타점을 부트스트랩({B:,}회) 검정했어.
             </div>
             """,
             unsafe_allow_html=True
         )
     else:
-        st.warning(f"⚠️ 체결 데이터 수집 부족: 필터링 후 타점이 총 {N_total}건입니다.")
+        st.warning(f"⚠️ 단기 체결 데이터 부족: 총 {N_total}건")
 # ------------------------------------------------------------------------------
 # 8-2. 상세 종목 탭 렌더링
 # ------------------------------------------------------------------------------
