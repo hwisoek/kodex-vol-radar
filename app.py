@@ -540,7 +540,7 @@ def analyze_60d_macro_regime(
     if h_data is None or len(h_data["close"]) < 60:
         return None
 
-    # [자동 인버스 판별 로직] 함수 내부로 안전하게 이동
+    # 자동 인버스 판별 로직
     inverse_keywords = ["인버스", "SQQQ", "SOXS", "SPXU", "TZA", "TSLS", "FNGD", "LABD"]
     is_inverse = any(kw in ticker_name.upper() for kw in inverse_keywords)
 
