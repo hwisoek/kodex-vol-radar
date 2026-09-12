@@ -698,29 +698,28 @@ if display_targets:
             """, unsafe_allow_html=True)
 
             # 인터랙티브 시계열 차트
-            prices = data["prices"]
-            drift_val = data["drift_val"]
-            time_labels = [f"-{(23 - int(i)) * 5}분" for i in range(24)]
-            time_labels[-1] = "현재"
-            future_labels = ["현재", "+30분", "+60분"]
-            future_upper = [current_price, float(current_price + (drift_val * 0.5) + (expected_range_value * 0.7)), expected_upper]
-            future_lower = [current_price, float(current_price + (drift_val * 0.5) - (expected_range_value * 0.7)), expected_lower]
+prices = data["prices"]
+drift_val = data["drift_val"]
+time_labels = [f"-{(23 - int(i)) * 5}분" for i in range(24)]
+time_labels[-1] = "현재"
+future_labels = ["현재", "+30분", "+60분"]
+future_upper = [current_price, float(current_price + (drift_val * 0.5) + (expected_range_value * 0.7)), expected_upper]
+future_lower = [current_price, float(current_price + (drift_val * 0.5) - (expected_range_value * 0.7)), expected_lower]
 
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=time_labels, y=prices, mode="lines+markers", name="실제 체결가",
-                                     line=dict(color="#0ea5e9", width=2.5), marker=dict(size=6, color="#0284c7")))
-            fig.add_trace(go.Scatter(x=future_labels, y=future_lower, mode="lines", name="예상 하한 (-1σ)",
-                                     line=dict(color="rgba(16,185,129,0.8)", width=1.5, dash="dot"), showlegend=True))
-            fig.add_trace(go.Scatter(x=future_labels, y=future_upper, mode="lines", name="예상 상한 (+1σ)",
-                                     line=dict(color="rgba(239,68,68,0.8)", width=1.5, dash="dot"),
-                                     fill="tonexty", fillcolor="rgba(14,165,233,0.1)"))
-            fig.add_shape(type="line", x0="현재", x1="현재", y0=0, y1=1, yref="paper", line=dict(color="#94a3b8", width=1.5, dash="dash"))
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=time_labels, y=prices, mode="lines+markers", name="실제 체결가",
+                         line=dict(color="#0ea5e9", width=2.5), marker=dict(size=6, color="#0284c7")))
+fig.add_trace(go.Scatter(x=future_labels, y=future_lower, mode="lines", name="예상 하한 (-1σ)",
+                         line=dict(color="rgba(16,185,129,0.8)", width=1.5, dash="dot"), showlegend=True))
+fig.add_trace(go.Scatter(x=future_labels, y=future_upper, mode="lines", name="예상 상한 (+1σ)",
+                         line=dict(color="rgba(239,68,68,0.8)", width=1.5, dash="dot"),
+                         fill="tonexty", fillcolor="rgba(14,165,233,0.1)"))
+fig.add_shape(type="line", x0="현재", x1="현재", y0=0, y1=1, yref="paper", line=dict(color="#94a3b8", width=1.5, dash="dash"))
 
-            selected_past_ticks = [str(time_labels[idx]) for idx in [0, 3, 6, 9, 12, 15, 18, 21, 23]]
-            custom_ticks = selected_past_ticks + ["+30분", "+60분"]
-            status_text = "실시간" if is_open else "직전 마감 기준"
+selected_past_ticks = [str(time_labels[idx]) for idx in [0, 3, 6, 9, 12, 15, 18, 21, 23]]
+custom_ticks = selected_past_ticks + ["+30분", "+60분"]
+status_text = "실시간" if is_open else "직전 마감 기준"
 
-           # 기존 레이아웃 업데이트 코드는 그대로 두고,
 fig.update_layout(
     title=dict(text=f"{asset_name} - 2시간 궤적 & 1시간 예측 밴드 ({status_text})", font=dict(size=15, color="#1e293b")),
     xaxis=dict(title="타임라인", tickmode="array", tickvals=custom_ticks, gridcolor="#f1f5f9"),
@@ -728,25 +727,14 @@ fig.update_layout(
     plot_bgcolor="#ffffff", paper_bgcolor="rgba(0,0,0,0)", template="plotly_white", height=420,
     margin=dict(l=15, r=15, t=50, b=15), hovermode="x unified"
 )
+st.plotly_chart(fig, use_container_width=True)
 
-# X축 비영업시간 숨기기 추가
-fig.update_xaxes(
-    rangebreaks=[
-        # 주말(토, 일) 잘라내기
-        dict(bounds=["sat", "mon"]), 
-        # 평일 장 닫힌 시간 잘라내기 (국장 기준: 15:30 ~ 다음날 09:00)
-        # 시간 단위이므로 15.5는 15시 30분을 의미함
-        dict(bounds=[15.5, 9], pattern="hour"), 
-    ]
-)
-            st.plotly_chart(fig, use_container_width=True)
+trading_h = float(target_info.get("trading_hours", 6.5))
+daily_scale = trading_h / 2.0
+annualized_vol = float(np.sqrt(max(data["pred_rv"], 0.0) * daily_scale * 252.0) * 100.0)
 
-            trading_h = float(target_info.get("trading_hours", 6.5))
-            daily_scale = trading_h / 2.0
-            annualized_vol = float(np.sqrt(max(data["pred_rv"], 0.0) * daily_scale * 252.0) * 100.0)
-
-            with st.expander(f"{asset_name} 모형 상태 및 FPCA 특징치"):
-                st.write(f"- **현재 2시간 관측 실현 변동성 ($\\ln RV_t$):** `{data['in_rv']:.4f}`")
-                st.write(f"- **예측 1시간 선행 RV ($\\ln \\widehat{{RV}}_{{t+1}}$):** `{data['adjusted_log_rv']:.4f}` (연환산 변동성: `{annualized_vol:.2f}%`)")
-                st.write(f"- **동적 레벨 보정치 (Local Offset):** `{data['dynamic_asset_offset']:+.4f}`")
-                st.write(f"- **FPCA 주성분 계수 (1~3):** `{float(data['fpc_scores'][0]):.4f}, {float(data['fpc_scores'][1]):.4f}, {float(data['fpc_scores'][2]):.4f}`")
+with st.expander(f"{asset_name} 모형 상태 및 FPCA 특징치"):
+    st.write(f"- **현재 2시간 관측 실현 변동성 ($\\ln RV_t$):** `{data['in_rv']:.4f}`")
+    st.write(f"- **예측 1시간 선행 RV ($\\ln \\widehat{{RV}}_{{t+1}}$):** `{data['adjusted_log_rv']:.4f}` (연환산 변동성: `{annualized_vol:.2f}%`)")
+    st.write(f"- **동적 레벨 보정치 (Local Offset):** `{data['dynamic_asset_offset']:+.4f}`")
+    st.write(f"- **FPCA 주성분 계수 (1~3):** `{float(data['fpc_scores'][0]):.4f}, {float(data['fpc_scores'][1]):.4f}, {float(data['fpc_scores'][2]):.4f}`")
