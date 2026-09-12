@@ -1775,27 +1775,6 @@ for tab, data in zip(tabs, display_targets):
             np.sqrt(max(data["pred_rv"], 0.0) * (trading_h / 2.0) * 252.0)
             * 100.0
         )
-        with st.expander(f"🔬 {asset_name} 수리 모형 상세 파라미터 (FPCA / RV)"):
-            st.write(
-                f"- **현재 2시간 관측 실현 변동성 ($\\ln RV_t$):**"
-                f" `{data['in_rv']:.4f}`"
-            )
-            st.write(
-                f"- **예측 1시간 선행 RV ($\\ln \\widehat{{RV}}_{{t+1}}$):**"
-                f" `{data['adjusted_log_rv']:.4f}` (연환산 변동성:"
-                f" `{annualized_vol:.2f}%`)"
-            )
-            st.write(
-                f"- **동적 레벨 보정치 (Local Offset):**"
-                f" `{data['dynamic_asset_offset']:+.4f}`"
-            )
-            st.write(
-                "- **FPCA 주성분 계수 (1~3):**"
-                f" `{float(data['fpc_scores'][0]):.4f},"
-                f" {float(data['fpc_scores'][1]):.4f},"
-                f" {float(data['fpc_scores'][2]):.4f}`"
-            )
-        
         # ----------------------------------------------------------------------
         # 인터랙티브 시계열 차트 (동적 타임라인 & 범주형 X축)
         # ----------------------------------------------------------------------
