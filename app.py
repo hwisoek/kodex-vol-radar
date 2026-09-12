@@ -12,6 +12,11 @@ from scipy.interpolate import make_interp_spline
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 import yfinance as yf
+# ==============================================================================
+# 0. 세션 스테이트 초기화 (장 마감 종목 캐시 저장소)
+# ==============================================================================
+if "closed_asset_cache" not in st.session_state:
+    st.session_state["closed_asset_cache"] = {}
 
 # ==============================================================================
 # 1. 페이지 레이아웃 및 자동 새로고침 설정
@@ -980,19 +985,31 @@ def analyze_60d_macro_regime(
         "low_60d": low_60d,
     }
 # ==============================================================================
-# 7. 단일 종목 연산 워커 함수
+# 7. 단일 종목 연산 워커 함수 (장 마감 시 캐시 우선 반환 최적화 적용)
 # ==============================================================================
 def process_single_asset(asset_name, target_info):
-    symbol = str(target_info["symbol"])
     is_open, time_display_str, hours_desc = get_single_market_status_text(
         target_info["tz"], target_info["is_kr"]
     )
+
+    # 🛑 [최적화 핵심] 장이 닫혀 있고(CLOSED) 이미 캐시된 데이터가 있다면 API 및 연산 완전 스킵!
+    if not is_open and asset_name in st.session_state["closed_asset_cache"]:
+        cached_res = st.session_state["closed_asset_cache"][asset_name]
+        # 실시간 상태 표시(마감 시간 등)만 현재 시점에 맞춰 살짝 갱신
+        cached_res["is_open"] = is_open
+        cached_res["time_display_str"] = time_display_str
+        return cached_res
+
+    symbol = str(target_info["symbol"])
 
     try:
         prices = fetch_recent_5m_candles(
             symbol, target_info["is_kr"], target_info.get("naver_symbol", "")
         )
         if len(prices) != 24:
+            # 수신 실패 시 혹시 캐시가 있다면 백업으로 반환
+            if asset_name in st.session_state["closed_asset_cache"]:
+                return st.session_state["closed_asset_cache"][asset_name]
             return None
 
         current_price = float(prices[-1])
@@ -1062,7 +1079,7 @@ def process_single_asset(asset_name, target_info):
         )
 
         # ----------------------------------------------------------------------
-        # 60일 1시간봉 기반 [ML 변동성 예측 & 레짐 가이드] 백테스팅 연산 (3단 필터 적용)
+        # 60일 1시간봉 기반 [ML 변동성 예측 & 레짐 가이드] 백테스팅 연산
         # ----------------------------------------------------------------------
         trade_returns = []
         time_over_count = 0
@@ -1072,24 +1089,19 @@ def process_single_asset(asset_name, target_info):
                 h_prices = np.array(h_data["close"], dtype=float)
                 s_prices = pd.Series(h_prices)
 
-                # 1. 1시간봉 기준 12봉 롤링 실현 변동성 계산 (팻핑거 클리핑 적용)
                 pct_chg = s_prices.pct_change().fillna(0.0)
                 clean_pct_chg = pct_chg.clip(lower=-0.04, upper=0.04)
                 rolling_rv = (clean_pct_chg**2).rolling(12, min_periods=3).mean().fillna(1e-5).values
                 pred_sigmas = np.sqrt(np.maximum(rolling_rv, 1e-6))
 
-                # 변동성 폭발 상위 20% 임계값
                 rv_threshold = float(np.nanpercentile(pred_sigmas, 80))
 
-                # 2. 10봉 EMA 기반 중심선 및 동적 변동성 밴드
                 mid_line = s_prices.ewm(span=10).mean().values
                 dyn_lower = mid_line * (1.0 - pred_sigmas)
                 dyn_upper = mid_line * (1.0 + pred_sigmas)
 
-                # [필터 2용] 40봉 EMA 중기 거시 추세선 산출
                 ema_macro = s_prices.ewm(span=40).mean().values
 
-                # [필터 3용] 손익비 최적화: 칼손절 -1.5% 강화 및 타임아웃 40봉 단축
                 stop_loss_limit = -0.015
                 max_holding_bars = 40
 
@@ -1097,7 +1109,6 @@ def process_single_asset(asset_name, target_info):
                 entry_price = 0.0
                 holding_period = 0
 
-                # EMA 40이 안정화되는 40번째 봉부터 시뮬레이션
                 for i in range(40, len(h_prices)):
                     curr_p = h_prices[i]
                     prev_p = h_prices[i - 1]
@@ -1105,14 +1116,8 @@ def process_single_asset(asset_name, target_info):
 
                     if position is None:
                         is_calm = curr_sigma < rv_threshold
-
-                        # 직전 봉 하단 이탈/터치 여부
                         touched_lower = prev_p <= dyn_lower[i - 1]
-
-                        # [필터 1] 양봉 반등 컨펌: 전봉보다 오르고 하단선 위로 올라선 명확한 반등봉
                         is_bullish_bounce = (curr_p >= prev_p * 1.001) and (curr_p > dyn_lower[i])
-
-                        # [필터 2] 대세 하락장 역추세 배제: 중기선(EMA 40) 대비 -3% 이상 폭락 구간 진입 차단
                         is_not_crashing = curr_p >= (ema_macro[i] * 0.97)
 
                         if is_calm and touched_lower and is_bullish_bounce and is_not_crashing:
@@ -1140,7 +1145,7 @@ def process_single_asset(asset_name, target_info):
         except Exception:
             trade_returns = []
 
-        return {
+        result_dict = {
             "asset_name": asset_name,
             "target_info": target_info,
             "is_open": is_open,
@@ -1170,17 +1175,27 @@ def process_single_asset(asset_name, target_info):
             "trade_returns": trade_returns,
             "time_over_count": time_over_count,
         }
+
+        # 📥 장 마감 상태가 되면 계산된 결과를 세션 캐시에 안전하게 백업
+        if not is_open:
+            st.session_state["closed_asset_cache"][asset_name] = result_dict
+
+        return result_dict
+
     except Exception:
+        # 예외 발생 시 캐시에 데이터가 있다면 백업용으로 반환하여 앱 충돌 방지
+        if asset_name in st.session_state["closed_asset_cache"]:
+            return st.session_state["closed_asset_cache"][asset_name]
         return None
 
 
 # ==============================================================================
-# 8. 메인 렌더링 & 병렬 계산 (장 중인 종목만 필터링)
+# 8. 메인 렌더링 & 병렬 계산 (전체 종목을 순위표에 띄우되 장 마감 종목은 연산 스킵)
 # ==============================================================================
 st.markdown("## 🎯 글로벌 실시간 변동성 스캐너 & 멀티 프레임 레이더")
 
 all_calculated = []
-with st.spinner("현재 장이 열려 있는(OPEN) 종목들의 변동성 데이터를 병렬 스캔 중..."):
+with st.spinner("종목별 변동성 데이터를 병렬 스캔 중 (장 마감 종목은 캐시 활용)..."):
     with ThreadPoolExecutor(max_workers=8) as executor:
         futures = [
             executor.submit(process_single_asset, name, info)
@@ -1189,12 +1204,11 @@ with st.spinner("현재 장이 열려 있는(OPEN) 종목들의 변동성 데이
         for f in as_completed(futures):
             res = f.result()
             if res is not None:
-                # 👇 핵심: 현재 장이 열려 있는(is_open == True) 종목만 담기!
-                if res["is_open"]:
-                    all_calculated.append(res)
+                # 👇 모든 종목을 그대로 리스트에 담아 순위표와 상세 탭에 정상 노출!
+                all_calculated.append(res)
 
 if not all_calculated:
-    st.warning("현재 실시간으로 장이 열려 있는(OPEN) 종목이 없습니다. (모든 시장 마감 상태)")
+    st.error("데이터 수집에 성공한 종목이 없습니다. 네트워크 환경을 확인하세요.")
     st.stop()
 
 full_ranked = sorted(all_calculated, key=lambda x: x["risk_score"], reverse=True)
