@@ -1655,7 +1655,7 @@ for tab, data in zip(tabs, display_targets):
                             </div>
                         </div>
                         <div style="font-size: 12px; color: #334155; line-height: 1.5; background-color: #f0fdf4; padding: 8px 12px; border-radius: 6px; border: 1px solid #dcfce3;">
-                            📌 <b>스윙 가이드:</b> {macro['desc']}
+                            📌 <b>장기 가이드:</b> {macro['desc']}
                         </div>
                     </div>
                     """,
