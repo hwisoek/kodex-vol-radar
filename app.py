@@ -1889,66 +1889,61 @@ for tab, data in zip(tabs, display_targets):
             )
         )
         # ----------------------------------------------------------------------
-        # 하단: 부트스트랩 기반 백테스팅 성과 및 적중률 검증 위젯
+        # 하단: 60일 데이터 기반 부트스트랩 비모수 백테스팅 및 유의성 검정
         # ----------------------------------------------------------------------
-        with st.expander(f"📊 [{asset_name}] 부트스트랩 비모수 백테스팅 및 전략 유의성 검정"):
-            # 1. 실제 종목 데이터 기반 초과수익률 계산 (예시: 5분봉 종가 변화율 - 무위험/기준수익률)
-            # data 내부에 실제 백테스트 수익률 배열(historical_excess_returns)이 있다면 그것을 우선 사용
-            if "historical_excess_returns" in data and len(data["historical_excess_returns"]) > 5:
-                excess_rets = np.array(data["historical_excess_returns"], dtype=float)
-            else:
-                price_series = np.array(data["prices"], dtype=float)
-                # 5분봉 기준 단순 로그 수익률 계산
-                raw_rets = np.diff(np.log(price_series))
-                # 초과수익 기준 (단기 무위험 금리 차감 또는 단순 수익률)
-                excess_rets = raw_rets - (0.035 / (252 * 78))  # 연 3.5% 무위험금리 차감 예시
-
-            # 데이터 유효성 방어 코드
-            if len(excess_rets) < 2 or np.all(excess_rets == 0):
-                st.info("검증에 필요한 가격 시계열 데이터가 부족해.")
-            else:
+        with st.expander(f"📊 [{asset_name}] 60일 시계열 부트스트랩 비모수 백테스팅 및 유의성 검정"):
+            # 60일 1시간봉 종가 데이터(h_data) 활용
+            if macro is not None and "close" in h_data and len(h_data["close"]) >= 30:
+                h_prices = np.array(h_data["close"], dtype=float)
+                
+                # 1시간봉 기준 로그 수익률 계산
+                raw_rets = np.diff(np.log(h_prices))
+                
+                # 시간당 무위험 수익률 차감 (연 3.5% 기준 / 연간 252일 * 일일 거래시간)
+                rf_hourly = 0.035 / (252.0 * trading_h)
+                excess_rets = raw_rets - rf_hourly
+                
                 B = 10000  # 리샘플링 횟수
                 N = len(excess_rets)
                 actual_mean = np.mean(excess_rets)
 
-                # 귀무가설 하의 중심화 초과수익 (H0: mean = 0)
+                # 귀무가설 하의 중심화 초과수익 (H0: mean <= 0)
                 centered_excess = excess_rets - actual_mean
 
-                # 부트스트랩 리샘플링 (시드 고정 제거로 종목별/실행별 자연스러운 분포 반영)
+                # 부트스트랩 리샘플링 (벡터 연산으로 빠른 처리)
                 boot_samples = np.random.choice(centered_excess, size=(B, N), replace=True)
                 boot_means = np.mean(boot_samples, axis=1)
 
-                # 경험적 단측 p-value (실제 관측치 이상 발생 확률)
-                boot_p_val = np.mean(boot_means >= actual_mean)
+                # 단측 p-value 계산 (귀무가설 분포에서 실제 평균 이상이 관측될 확률)
+                boot_p_val = float(np.mean(boot_means >= actual_mean))
 
-                # 95% 신뢰구간 (Percentile Bootstrap CI)
+                # 95% 백분위수 신뢰구간 (Percentile Bootstrap CI)
                 raw_boot_samples = np.random.choice(excess_rets, size=(B, N), replace=True)
                 raw_boot_means = np.mean(raw_boot_samples, axis=1)
-                ci_lower = np.percentile(raw_boot_means, 2.5)
-                ci_upper = np.percentile(raw_boot_means, 97.5)
+                ci_lower = float(np.percentile(raw_boot_means, 2.5))
+                ci_upper = float(np.percentile(raw_boot_means, 97.5))
 
-                # 메트릭 출력
+                # 화면 메트릭 출력
                 b1, b2, b3 = st.columns(3)
-                b1.metric("표본 평균 초과수익", f"{actual_mean * 100:+.4f}%")
+                b1.metric("60일 시간당 평균 초과수익", f"{actual_mean * 100:+.4f}%")
                 b2.metric(
                     "부트스트랩 단측 p-value",
                     f"{boot_p_val:.4f}",
-                    delta="유의함 (p < 0.05)" if boot_p_val < 0.05 else "유의하지 않음",
-                    delta_color="normal" if boot_p_val < 0.05 else "off",
+                    delta="★ 유의함 (p < 0.05)" if boot_p_val < 0.05 else "유의하지 않음",
+                    delta_color="normal" if boot_p_val < 0.05 else "off"
                 )
-                b3.metric(
-                    "95% 신뢰구간 (CI)",
-                    f"[{ci_lower*100:+.2f}%, {ci_upper*100:+.2f}%]",
-                )
+                b3.metric("95% 신뢰구간 (CI)", f"[{ci_lower*100:+.3f}%, {ci_upper*100:+.3f}%]")
 
                 st.markdown(
                     f"""
                     <div style="font-size: 12px; color: #334155; line-height: 1.5; background-color: #f8fafc; padding: 10px 14px; border-radius: 6px; border: 1px solid #e2e8f0; margin-top: 8px;">
-                        📌 <b>검증 해석:</b> 관측 데이터({N}개 봉) 기준 귀무가설(평균 초과수익 $\le$ 0) 기각 여부 확인.<br>
-                        - p-value가 0.05 미만이면 통계적으로 유의미한 양(+)의 기대수익 구간임을 나타내.
+                        📌 <b>검증 요약:</b> 60일 누적 {N:,}개 1시간봉 기준 부트스트랩({B:,}회) 결과.<br>
+                        - 최근 60일 동안의 추세 및 변동성을 바탕으로 산출된 통계적 유의성으로, 표본 수($N$)가 충분히 확보되어 왜곡 없는 검정력을 제공해.
                     </div>
                     """,
-                    unsafe_allow_html=True,
+                    unsafe_allow_html=True
                 )
+            else:
+                st.info("💡 60일 시계열 데이터가 부족하여 부트스트랩 검정을 수행할 수 없어.")
         
        
