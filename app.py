@@ -700,9 +700,15 @@ if display_targets:
             # 인터랙티브 시계열 차트
 prices = data["prices"]
 drift_val = data["drift_val"]
-time_labels = [f"-{(23 - int(i)) * 5}분" for i in range(24)]
-time_labels[-1] = "현재"
-future_labels = ["현재", "+30분", "+60분"]
+
+# ✅ 장 상태에 따라 기준 텍스트와 접두사 동적 할당
+base_text = "현재" if is_open else "장 마감"
+prefix = "" if is_open else "마감 "
+
+# 라벨 생성 시 접두어 반영 (예: 마감 -115분, 마감 -110분 ... 장 마감)
+time_labels = [f"{prefix}-{(23 - int(i)) * 5}분" for i in range(23)] + [base_text]
+future_labels = [base_text, f"{prefix}+30분", f"{prefix}+60분"]
+
 future_upper = [current_price, float(current_price + (drift_val * 0.5) + (expected_range_value * 0.7)), expected_upper]
 future_lower = [current_price, float(current_price + (drift_val * 0.5) - (expected_range_value * 0.7)), expected_lower]
 
@@ -714,10 +720,12 @@ fig.add_trace(go.Scatter(x=future_labels, y=future_lower, mode="lines", name="�
 fig.add_trace(go.Scatter(x=future_labels, y=future_upper, mode="lines", name="예상 상한 (+1σ)",
                          line=dict(color="rgba(239,68,68,0.8)", width=1.5, dash="dot"),
                          fill="tonexty", fillcolor="rgba(14,165,233,0.1)"))
-fig.add_shape(type="line", x0="현재", x1="현재", y0=0, y1=1, yref="paper", line=dict(color="#94a3b8", width=1.5, dash="dash"))
+
+# ✅ 수직선 위치를 '현재' 대신 동적 텍스트(base_text)로 수정
+fig.add_shape(type="line", x0=base_text, x1=base_text, y0=0, y1=1, yref="paper", line=dict(color="#94a3b8", width=1.5, dash="dash"))
 
 selected_past_ticks = [str(time_labels[idx]) for idx in [0, 3, 6, 9, 12, 15, 18, 21, 23]]
-custom_ticks = selected_past_ticks + ["+30분", "+60분"]
+custom_ticks = selected_past_ticks + [f"{prefix}+30분", f"{prefix}+60분"]
 status_text = "실시간" if is_open else "직전 마감 기준"
 
 fig.update_layout(
