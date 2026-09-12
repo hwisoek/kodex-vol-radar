@@ -645,6 +645,10 @@ us_badge = "🟢 장 중 (OPEN)" if us_open else "🔴 장 마감 (CLOSED)"
 # ------------------------------------------------------------------------------
 # 8-1. 데이터 분류 및 처리
 # ------------------------------------------------------------------------------
+# ✅ 1. 이전 순위를 기억하기 위한 session_state 초기화
+if "prev_ranks" not in st.session_state:
+    st.session_state["prev_ranks"] = {}
+
 kr_data, us_data = [], []
 
 for d in full_ranked:
@@ -666,17 +670,40 @@ for d in full_ranked:
         "휩소 위험": "⚠️ 주의" if d["is_whipsaw_risk"] else "✅ 안정",
     }
 
-    # 통화 단위 또는 시장명으로 국장 / 미장 분기
     if d["target_info"]["currency"] == "원" or "한국" in d["target_info"]["market_name"]:
         kr_data.append(row)
     else:
         us_data.append(row)
 
-# 순위 재부여 (각 시장별 1위부터 시작)
-for idx, row in enumerate(kr_data):
-    row["순위"] = idx + 1
-for idx, row in enumerate(us_data):
-    row["순위"] = idx + 1
+# ✅ 2. 순위 재부여 및 변동폭(▲/▼) 계산
+new_prev_ranks = {}
+
+def apply_rank_and_change(data_list):
+    for idx, row in enumerate(data_list):
+        current_rank = idx + 1
+        asset_name = row["종목명"]
+        
+        # 이전 순위 불러오기 (처음 등장한 종목이면 현재 순위와 동일하게 취급)
+        prev_rank = st.session_state["prev_ranks"].get(asset_name, current_rank)
+        
+        # 순위 변동 계산 (예: 예전 5위 -> 지금 3위 = +2 상승)
+        change = prev_rank - current_rank
+        
+        if change > 0:
+            row["순위"] = f"{current_rank} (▲ {change})"
+        elif change < 0:
+            row["순위"] = f"{current_rank} (▼ {abs(change)})"
+        else:
+            row["순위"] = f"{current_rank} (-)"
+            
+        # 다음 갱신 때 비교하기 위해 현재 순위 저장
+        new_prev_ranks[asset_name] = current_rank
+
+apply_rank_and_change(kr_data)
+apply_rank_and_change(us_data)
+
+# 최신 순위 상태로 session_state 업데이트
+st.session_state["prev_ranks"].update(new_prev_ranks)
 
 df_kr = pd.DataFrame(kr_data)
 df_us = pd.DataFrame(us_data)
@@ -688,6 +715,19 @@ if not df_kr.empty:
 if not df_us.empty:
     cols = ["순위"] + [c for c in df_us.columns if c != "순위"]
     df_us = df_us[cols]
+
+# ✅ 3. 순위 기호(▲/▼)에 맞춰 텍스트 색상을 입히는 함수
+def style_rank(val):
+    if isinstance(val, str):
+        if '▲' in val:
+            return 'color: #ef4444; font-weight: bold;'  # 상승: 빨간색
+        elif '▼' in val:
+            return 'color: #3b82f6; font-weight: bold;'  # 하락: 파란색
+    return 'color: #94a3b8;'  # 변동 없음: 회색
+
+# DataFrame에 스타일 적용 (Pandas 버전에 따라 applymap 또는 map 사용)
+styled_df_kr = df_kr.style.map(style_rank, subset=['순위']) if not df_kr.empty else df_kr
+styled_df_us = df_us.style.map(style_rank, subset=['순위']) if not df_us.empty else df_us
 
 # ------------------------------------------------------------------------------
 # 렌더링 (탭 형태)
@@ -707,7 +747,7 @@ col_config = {
 with tab_kr:
     st.markdown(f"#### 🇰🇷 국내 모니터링 순위표 `상태: {kr_badge}` (총 {len(df_kr)}개)")
     st.dataframe(
-        df_kr,
+        styled_df_kr,  # <--- 이 부분 교체
         column_config=col_config,
         use_container_width=True,
         hide_index=True,
@@ -717,13 +757,12 @@ with tab_kr:
 with tab_us:
     st.markdown(f"#### 🇺🇸 미국 모니터링 순위표 `상태: {us_badge}` (총 {len(df_us)}개)")
     st.dataframe(
-        df_us,
+        styled_df_us,  # <--- 이 부분 교체
         column_config=col_config,
         use_container_width=True,
         hide_index=True,
         height=360,
     )
-
 # ------------------------------------------------------------------------------
 # 8-2. 상세 종목 탭 렌더링
 # ------------------------------------------------------------------------------
