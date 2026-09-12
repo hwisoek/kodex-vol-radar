@@ -542,7 +542,7 @@ def analyze_60d_macro_regime(
 
     # 자동 인버스 판별 로직
     inverse_keywords = ["인버스", "SQQQ", "SOXS", "SPXU", "TZA", "TSLS", "FNGD", "LABD"]
-    is_inverse = any(kw in ticker_name.upper() for kw in inverse_keywords)
+    is_inverse = any(kw in ticker_name.upper() for kw in ticker_name.upper())
 
     h_prices = np.array(h_data["close"], dtype=float)
     p_min = float(np.min(h_prices))
@@ -587,13 +587,6 @@ def analyze_60d_macro_regime(
             "desc": "뚜렷한 추세 없이 박스권에서 횡보 중입니다. 상단과 하단 주요 가격대 대응을 권장합니다.",
             "regime": "박스권 횡보",
         }
-# [자동 인버스 판별 로직]
-# 종목명에 아래 키워드가 포함되어 있으면 자동으로 인버스로 인식
-inverse_keywords = ["인버스", "SQQQ", "SOXS", "SPXU", "TZA", "TSLS", "FNGD", "LABD"]
-is_inverse = any(kw in ticker_name.upper() for kw in inverse_keywords)
-  close = h_data["close"]
-  high_60d = np.max(h_data["high"])
-  low_60d = np.min(h_data["low"])
 
   # 1. 1시간봉 로그 수익률 기반 5일 변동폭 계산
   log_returns = np.diff(np.log(close))
