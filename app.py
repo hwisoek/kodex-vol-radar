@@ -1063,66 +1063,71 @@ def process_single_asset(asset_name, target_info):
         )
 
         # ----------------------------------------------------------------------
-        # 60일 1시간봉 기반 [ML 변동성 예측 & 레짐 가이드] 백테스팅 연산
+        # 60일 1시간봉 기반 [ML 변동성 예측 & 레짐 가이드] 백테스팅 연산 (안전 버전)
         # ----------------------------------------------------------------------
         trade_returns = []
         try:
             h_data = fetch_recent_1h_candles(symbol)
             if h_data is not None and "close" in h_data and len(h_data["close"]) >= 50:
                 h_prices = np.array(h_data["close"], dtype=float)
-                log_p = np.log(h_prices)
-                returns = np.diff(log_p)
-
-                # 1. 과거 1시간봉 롤링 12개(약 2영업일) 기반 실현 변동성(RV) 계산
-                win_rv = 12
-                hist_rv = []
-                for i in range(win_rv, len(returns)):
-                    sub_ret = returns[i - win_rv : i]
-                    hist_rv.append(np.sum(sub_ret**2) + 1e-8)
-                hist_rv = np.array(hist_rv)
-                log_hist_rv = np.log(hist_rv)
-
-                # RV 레짐 임계값 (상위 20% 변동성 폭발 구간 산출)
-                rv_threshold = np.percentile(log_hist_rv, 80)
-                
-                # 2. 모델 기반 동적 예측 진폭 및 밴드 생성
-                # 각 시점의 단기 가격 중심선(10봉 EMA)에 예측 변동성 밴드 결합
                 s_prices = pd.Series(h_prices)
+                
+                # 1. 1시간봉 기준 12봉 롤링 실현 변동성(RV) 계산
+                log_rets = np.log(s_prices / s_prices.shift(1)).fillna(0.0)
+                rolling_rv = (log_rets**2).rolling(12).sum().fillna(1e-8)
+                log_rolling_rv = np.log(rolling_rv + 1e-8)
+
+                # 변동성 폭발(상위 20%) 임계값
+                rv_threshold = float(np.percentile(log_rolling_rv.dropna(), 80))
+
+                # 2. 동적 예측 밴드 (10봉 EMA ± 1.0 * sqrt(RV))
                 mid_line = s_prices.ewm(span=10).mean().values
+                pred_sigmas = np.sqrt(rolling_rv.values)
+                
+                dyn_lower = mid_line * (1.0 - pred_sigmas)
+                dyn_upper = mid_line * (1.0 + pred_sigmas)
 
                 stop_loss_limit = -0.020
-                max_holding_bars = 12  # 최대 보유 시간
+                max_holding_bars = 12
 
                 position = None
                 entry_price = 0.0
                 holding_period = 0
 
-                # 시뮬레이션 루프 (데이터 인덱스 정렬: win_rv + 1부터 시작)
-                for i in range(win_rv + 1, len(h_prices)):
+                # 15번째 봉부터 시뮬레이션 시작
+                for i in range(15, len(h_prices)):
                     curr_p = h_prices[i]
                     prev_p = h_prices[i - 1]
-                    rv_idx = i - (win_rv + 1)
-                    curr_log_rv = log_hist_rv[rv_idx]
-
-                    # 모델의 실현 변동성 기반 1시그마 동적 밴드
-                    pred_sigma = np.sqrt(np.exp(curr_log_rv))
-                    dyn_lower = mid_line[i] * (1.0 - pred_sigma)
-                    dyn_upper = mid_line[i] * (1.0 + pred_sigma)
+                    curr_log_rv = log_rolling_rv.iloc[i]
 
                     if position is None:
-                        # [ML 가이드 진입 조건]
-                        # 1) 변동성이 폭발(레짐 체인지) 상태가 아님 (하방 브레이크아웃 휩소 방지)
-                        # 2) 가격이 모델의 동적 지지선(-1σ)을 찍고 반등
-                        is_calm_regime = curr_log_rv < rv_threshold
-                        is_support_bounce = (prev_p <= dyn_lower) and (curr_p > dyn_lower)
+                        # [진입]: 변동성이 안정권이고, 하단 동적 지지선을 터치 후 회복할 때
+                        is_calm = curr_log_rv < rv_threshold
+                        is_bounce = (prev_p <= dyn_lower[i - 1]) and (curr_p > dyn_lower[i])
 
-                        if is_calm_regime and is_support_bounce:
+                        if is_calm and is_bounce:
                             position = "LONG"
                             entry_price = curr_p
                             holding_period = 0
                     elif position == "LONG":
                         holding_period += 1
                         current_pnl = (curr_p - entry_price) / entry_price
+
+                        # [청산]: 상단 동적 저항선 익절, -2% 손절, 변동성 급증 시 대피, 시간 초과
+                        is_tp = curr_p >= dyn_upper[i]
+                        is_sl = current_pnl <= stop_loss_limit
+                        is_spike = curr_log_rv >= rv_threshold
+                        is_timeout = holding_period >= max_holding_bars
+
+                        if is_tp or is_sl or is_spike or is_timeout:
+                            trade_returns.append(float(current_pnl))
+                            position = None
+
+                if position == "LONG":
+                    trade_returns.append(float((h_prices[-1] - entry_price) / entry_price))
+        except Exception as e:
+            # 에러 발생 시 로그를 볼 수 있게 임시 출력하거나 빈 리스트 처리
+            trade_returns = []
 
                         # [ML 가이드 청산 조건]
                         # 1) 동적 저항선(+1σ) 도달 (익절)
