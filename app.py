@@ -1888,24 +1888,56 @@ for tab, data in zip(tabs, display_targets):
                 fillcolor="rgba(14,165,233,0.1)",
             )
         )
+       # ----------------------------------------------------------------------
+        # 하단 1: 모형 상태 Expander
         # ----------------------------------------------------------------------
-        # 하단: 가이드(변동성 밴드 매매) 기반 백테스팅 성과 및 통계적 유의성 검정
+        annualized_vol = float(
+            np.sqrt(max(data["pred_rv"], 0.0) * (trading_h / 2.0) * 252.0)
+            * 100.0
+        )
+        with st.expander(f"🔬 {asset_name} 수리 모형 상세 파라미터 (FPCA / RV)"):
+            st.write(
+                f"- **현재 2시간 관측 실현 변동성 ($\\ln RV_t$):**"
+                f" `{data['in_rv']:.4f}`"
+            )
+            st.write(
+                f"- **예측 1시간 선행 RV ($\\ln \\widehat{{RV}}_{{t+1}}$):**"
+                f" `{data['adjusted_log_rv']:.4f}` (연환산 변동성:"
+                f" `{annualized_vol:.2f}%`)"
+            )
+            st.write(
+                f"- **동적 레벨 보정치 (Local Offset):**"
+                f" `{data['dynamic_asset_offset']:+.4f}`"
+            )
+            st.write(
+                f"- **FPCA 주성분 계수 (1~3):**"
+                f" `{float(data['fpc_scores'][0]):.4f},"
+                f" {float(data['fpc_scores'][1]):.4f},"
+                f" {float(data['fpc_scores'][2]):.4f}`"
+            )
+
+        # ----------------------------------------------------------------------
+        # 하단 2: 가이드 전략(손절선 적용) 백테스팅 및 부트스트랩 비모수 검정 위젯
         # ----------------------------------------------------------------------
         with st.expander(f"📊 [{asset_name}] 가이드 전략 백테스팅 및 부트스트랩 비모수 검정"):
             if macro is not None and "close" in h_data and len(h_data["close"]) >= 50:
                 h_prices = np.array(h_data["close"], dtype=float)
-                
-                # 1. 60일 1시간봉 기반 동적 변동성 채널 시뮬레이션 (가이드 로직 재현)
-                # 20봉 이동평균 및 롤링 표준편차 기반 지지/저항 밴드 생성
+
+                # 1. 20봉 롤링 기반 가이드 밴드(지지선/저항선) 생성
                 window = 20
                 s_prices = pd.Series(h_prices)
                 roll_mean = s_prices.rolling(window).mean().bfill().values
                 roll_std = s_prices.rolling(window).std().bfill().values
-                
-                lower_band = roll_mean - 1.0 * roll_std  # 가이드 지지선 (매수 타깃)
-                upper_band = roll_mean + 1.0 * roll_std  # 가이드 저항선 (청산 타깃)
 
-                # 2. 가이드 매매 시뮬레이션 (진입: 하단 이탈 후 반등 / 청산: 상단 도달 또는 최대 보유 20봉)
+                lower_band = roll_mean - 1.0 * roll_std  # 지지선 (매수 후보선)
+                upper_band = roll_mean + 1.0 * roll_std  # 저항선 (익절 목표선)
+
+                # 2. 리스크 관리(손절선)를 포함한 매매 시뮬레이션
+                # 진입: 지지선 하향 이탈 후 복귀(반등)
+                # 청산: 저항선 도달(익절) OR -2.0% 하락(손절) OR 15봉 초과 보유
+                stop_loss_limit = -0.020  # -2.0% 손절 기준
+                max_holding_bars = 15
+
                 trade_returns = []
                 position = None
                 entry_price = 0.0
@@ -1916,75 +1948,78 @@ for tab, data in zip(tabs, display_targets):
                     prev_p = h_prices[i - 1]
 
                     if position is None:
-                        # [가이드 매수 규칙]: 이전 봉이 하단 밴드 밑에 있다가 지지선을 회복/터치할 때 매수
                         if prev_p <= lower_band[i - 1] and curr_p > lower_band[i]:
                             position = "LONG"
                             entry_price = curr_p
                             holding_period = 0
                     elif position == "LONG":
                         holding_period += 1
-                        # [가이드 청산 규칙]: 상단 저항선 도달 시 익절, 또는 시간 경과(20봉 초과) 청산
-                        if curr_p >= upper_band[i] or holding_period >= 20:
-                            pnl = (curr_p - entry_price) / entry_price
-                            trade_returns.append(pnl)
+                        current_pnl = (curr_p - entry_price) / entry_price
+
+                        # 청산 조건 확인 (익절, 손절, 시간 초과)
+                        is_take_profit = curr_p >= upper_band[i]
+                        is_stop_loss = current_pnl <= stop_loss_limit
+                        is_time_over = holding_period >= max_holding_bars
+
+                        if is_take_profit or is_stop_loss or is_time_over:
+                            trade_returns.append(current_pnl)
                             position = None
 
-                # 포지션 유지 중 장 마감된 마지막 건 처리
+                # 마지막 미청산 포지션 종가 청산 반영
                 if position == "LONG":
-                    pnl = (h_prices[-1] - entry_price) / entry_price
-                    trade_returns.append(pnl)
+                    final_pnl = (h_prices[-1] - entry_price) / entry_price
+                    trade_returns.append(final_pnl)
 
                 trade_returns = np.array(trade_returns, dtype=float)
 
-                # 3. 유효 거래 발생 여부 확인
                 if len(trade_returns) >= 5:
-                    # 거래당 무위험 금리 차감 (보유 기간 고려한 기회비용 차감)
-                    rf_per_trade = (0.035 / 252.0) * (holding_period if holding_period > 0 else 3)
-                    excess_rets = trade_returns - rf_per_trade
+                    # 무위험 금리 차감 (보유 기회비용 반영)
+                    avg_hold = max(holding_period, 2)
+                    rf_trade = (0.035 / (252.0 * trading_h)) * avg_hold
+                    excess_rets = trade_returns - rf_trade
 
                     B = 10000
                     N = len(excess_rets)
                     actual_mean = np.mean(excess_rets)
                     win_rate = np.mean(trade_returns > 0) * 100.0
 
-                    # 귀무가설: 가이드 전략의 평균 초과수익 <= 0
+                    # 부트스트랩 비모수 검정 (H0: 초과수익 <= 0)
                     centered_excess = excess_rets - actual_mean
-
-                    # 부트스트랩 리샘플링
                     boot_samples = np.random.choice(centered_excess, size=(B, N), replace=True)
                     boot_means = np.mean(boot_samples, axis=1)
                     boot_p_val = float(np.mean(boot_means >= actual_mean))
 
-                    # 95% 신뢰구간 (Percentile Bootstrap CI)
-                    raw_boot_samples = np.random.choice(excess_rets, size=(B, N), replace=True)
-                    raw_boot_means = np.mean(raw_boot_samples, axis=1)
-                    ci_lower = float(np.percentile(raw_boot_means, 2.5))
-                    ci_upper = float(np.percentile(raw_boot_means, 97.5))
+                    # 95% 백분위수 신뢰구간
+                    raw_boot = np.random.choice(excess_rets, size=(B, N), replace=True)
+                    raw_means = np.mean(raw_boot, axis=1)
+                    ci_lower = float(np.percentile(raw_means, 2.5))
+                    ci_upper = float(np.percentile(raw_means, 97.5))
 
-                    # 화면 메트릭 출력 (4열 배치)
                     b1, b2, b3, b4 = st.columns(4)
                     b1.metric("총 매매 체결 수", f"{N}회", delta=f"승률: {win_rate:.1f}%")
                     b2.metric("건당 평균 초과수익", f"{actual_mean * 100:+.2f}%")
                     b3.metric(
                         "전략 단측 p-value",
                         f"{boot_p_val:.4f}",
-                        delta="★ 유의한 알파 (p < 0.05)" if boot_p_val < 0.05 else "통계적 유의성 부족",
-                        delta_color="normal" if boot_p_val < 0.05 else "off"
+                        delta="★ 통계적 유의 (p < 0.05)" if boot_p_val < 0.05 else "유의성 부족",
+                        delta_color="normal" if boot_p_val < 0.05 else "off",
                     )
-                    b4.metric("95% 신뢰구간 (CI)", f"[{ci_lower*100:+.2f}%, {ci_upper*100:+.2f}%]")
+                    b4.metric(
+                        "95% 신뢰구간 (CI)",
+                        f"[{ci_lower*100:+.2f}%, {ci_upper*100:+.2f}%]",
+                    )
 
                     st.markdown(
                         f"""
                         <div style="font-size: 12px; color: #334155; line-height: 1.5; background-color: #f8fafc; padding: 10px 14px; border-radius: 6px; border: 1px solid #e2e8f0; margin-top: 8px;">
                             📌 <b>가이드 백테스팅 검증 요약:</b><br>
-                            - 최근 60일간 <b>'하단 지지선 매수 $\\rightarrow$ 상단 저항선 익절'</b> 규칙을 엄격히 적용했을 때 총 <b>{N}회</b>의 타점이 발생했어.<br>
-                            - 건당 평균 초과수익률은 <b>{actual_mean * 100:+.2f}%</b>이며, 부트스트랩({B:,}회) 검정 결과 p-value가 <b>{boot_p_val:.4f}</b>로 산출되었어.
+                            - 최근 60일 1시간봉 기준 <b>지지선 반등 진입 $\\rightarrow$ 저항선 익절 / 손절(-2.0%)</b> 규칙 적용 시 총 <b>{N}회</b> 체결.<br>
+                            - 손익비 관리(칼손절) 반영 후 산출된 건당 평균 초과수익은 <b>{actual_mean * 100:+.2f}%</b>이며, 부트스트랩({B:,}회) 검정 p-value는 <b>{boot_p_val:.4f}</b>입니다.
                         </div>
                         """,
-                        unsafe_allow_html=True
+                        unsafe_allow_html=True,
                     )
                 else:
-                    st.info(f"💡 최근 60일간 가이드 타점(지지선 터치 후 반등) 조건을 만족하는 체결 수가 부족해 ({len(trade_returns)}회 발생).")
+                    st.info(f"💡 최근 60일간 가이드 타점을 만족하는 체결 수가 부족합니다 ({len(trade_returns)}회 발생).")
             else:
-                st.info("💡 60일 1시간봉 데이터가 부족하여 가이드 백테스팅을 실행할 수 없어.")
-       
+                st.info("💡 60일 1시간봉 데이터가 부족하여 가이드 백테스팅을 실행할 수 없습니다.")
