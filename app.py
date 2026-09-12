@@ -540,6 +540,10 @@ def analyze_60d_macro_regime(
     if h_data is None or len(h_data["close"]) < 60:
         return None
 
+    # [자동 인버스 판별 로직] 함수 내부로 안전하게 이동
+    inverse_keywords = ["인버스", "SQQQ", "SOXS", "SPXU", "TZA", "TSLS", "FNGD", "LABD"]
+    is_inverse = any(kw in ticker_name.upper() for kw in inverse_keywords)
+
     h_prices = np.array(h_data["close"], dtype=float)
     p_min = float(np.min(h_prices))
     p_max = float(np.max(h_prices))
@@ -554,7 +558,7 @@ def analyze_60d_macro_regime(
     # 기본 상승/하락 판정
     is_uptrend = current_price > ma20 and recent_ret > 0.02
 
-    # ▼▼▼ [핵심 수정] 상승 추세라도 채널 상단(75% 이상)이면 고점 과열/익절 가이드로 강제 분기 ▼▼▼
+    # 상승 추세라도 채널 상단(75% 이상)이면 고점 과열/익절 가이드로 강제 분기
     if is_uptrend and channel_pos >= 75.0:
         return {
             "title": "⚠️ [장기 전략] 상승 추세이나 채널 상단(고점) 도달",
@@ -583,7 +587,6 @@ def analyze_60d_macro_regime(
             "desc": "뚜렷한 추세 없이 박스권에서 횡보 중입니다. 상단과 하단 주요 가격대 대응을 권장합니다.",
             "regime": "박스권 횡보",
         }
-
 # [자동 인버스 판별 로직]
 # 종목명에 아래 키워드가 포함되어 있으면 자동으로 인버스로 인식
 inverse_keywords = ["인버스", "SQQQ", "SOXS", "SPXU", "TZA", "TSLS", "FNGD", "LABD"]
