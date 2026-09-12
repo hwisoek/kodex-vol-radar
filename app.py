@@ -1596,9 +1596,14 @@ for tab, data in zip(tabs, display_targets):
 
             h_data = fetch_recent_1h_candles(SYMBOL)
             trading_h = float(target_info.get("trading_hours", 6.5))
+
+            # 👇 이 부분을 요렇게 추가해 주면 돼!
             macro = analyze_60d_macro_regime(
-    h_data, current_price, ticker_name=selected_ticker
-)
+                h_data,
+                current_price,
+                trading_hours=trading_h,
+                ticker_name=ticker,  # 👈 현재 순회 중인 종목 변수명 (ticker 등)
+            )
 
             if macro is not None:
                 res_5d_str = (
