@@ -1121,7 +1121,7 @@ def process_single_asset(asset_name, target_info):
                         touched_lower = prev_p <= dyn_lower[i - 1]
 
                         # [필터 1] 양봉 반등 컨펌: 전봉보다 오르고 하단선 위로 올라선 명확한 반등봉
-                        is_bullish_bounce = (curr_p > prev_p) and (curr_p > dyn_lower[i])
+                        is_bullish_bounce = (curr_p >= prev_p * 1.001) and (curr_p > dyn_lower[i])
 
                         # [필터 2] 대세 하락장 역추세 배제: 중기선(EMA 40) 대비 -3% 이상 폭락 구간 진입 차단
                         is_not_crashing = curr_p >= (ema_macro[i] * 0.97)
