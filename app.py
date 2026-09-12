@@ -2210,7 +2210,7 @@ for tab, data in zip(tabs, display_targets):
                         f"""
                         <div style="font-size: 12px; color: #334155; line-height: 1.5; background-color: #f8fafc; padding: 10px 14px; border-radius: 6px; border: 1px solid #e2e8f0; margin-top: 8px;">
                             📌 <b>가이드 백테스팅 검증 요약:</b><br>
-                            - 최근 60일 1시간봉 기준 <b>지지선 반등 진입 $\\rightarrow$ 저항선 익절 / 손절(-2.0%)</b> 규칙 적용 시 총 <b>{N}회</b> 체결.<br>
+                            - 최근 60일 1시간봉 기준 <b>지지선 반등 진입 $\\rightarrow$ 저항선 익절 / 손절(-1.5%)</b> 규칙 적용 시 총 <b>{N}회</b> 체결.<br>
                             - 손익비 관리(칼손절) 반영 후 산출된 건당 평균 초과수익은 <b>{actual_mean * 100:+.2f}%</b>이며, 부트스트랩({B:,}회) 검정 p-value는 <b>{boot_p_val:.4f}</b>입니다.
                         </div>
                         """,
