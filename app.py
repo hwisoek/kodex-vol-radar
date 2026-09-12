@@ -720,13 +720,25 @@ if display_targets:
             custom_ticks = selected_past_ticks + ["+30분", "+60분"]
             status_text = "실시간" if is_open else "직전 마감 기준"
 
-            fig.update_layout(
-                title=dict(text=f"{asset_name} - 2시간 궤적 & 1시간 예측 밴드 ({status_text})", font=dict(size=15, color="#1e293b")),
-                xaxis=dict(title="타임라인", tickmode="array", tickvals=custom_ticks, gridcolor="#f1f5f9"),
-                yaxis=dict(title=f"가격 ({CURRENCY})", gridcolor="#f1f5f9"),
-                plot_bgcolor="#ffffff", paper_bgcolor="rgba(0,0,0,0)", template="plotly_white", height=420,
-                margin=dict(l=15, r=15, t=50, b=15), hovermode="x unified"
-            )
+           # 기존 레이아웃 업데이트 코드는 그대로 두고,
+fig.update_layout(
+    title=dict(text=f"{asset_name} - 2시간 궤적 & 1시간 예측 밴드 ({status_text})", font=dict(size=15, color="#1e293b")),
+    xaxis=dict(title="타임라인", tickmode="array", tickvals=custom_ticks, gridcolor="#f1f5f9"),
+    yaxis=dict(title=f"가격 ({CURRENCY})", gridcolor="#f1f5f9"),
+    plot_bgcolor="#ffffff", paper_bgcolor="rgba(0,0,0,0)", template="plotly_white", height=420,
+    margin=dict(l=15, r=15, t=50, b=15), hovermode="x unified"
+)
+
+# X축 비영업시간 숨기기 추가
+fig.update_xaxes(
+    rangebreaks=[
+        # 주말(토, 일) 잘라내기
+        dict(bounds=["sat", "mon"]), 
+        # 평일 장 닫힌 시간 잘라내기 (국장 기준: 15:30 ~ 다음날 09:00)
+        # 시간 단위이므로 15.5는 15시 30분을 의미함
+        dict(bounds=[15.5, 9], pattern="hour"), 
+    ]
+)
             st.plotly_chart(fig, use_container_width=True)
 
             trading_h = float(target_info.get("trading_hours", 6.5))
