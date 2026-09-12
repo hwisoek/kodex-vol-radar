@@ -1597,8 +1597,8 @@ for tab, data in zip(tabs, display_targets):
             h_data = fetch_recent_1h_candles(SYMBOL)
             trading_h = float(target_info.get("trading_hours", 6.5))
             macro = analyze_60d_macro_regime(
-                h_data, current_price, trading_hours=trading_h
-            )
+    h_data, current_price, ticker_name=selected_ticker
+)
 
             if macro is not None:
                 res_5d_str = (
