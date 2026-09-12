@@ -456,14 +456,57 @@ if not all_calculated:
 # 정렬
 full_ranked = sorted(all_calculated, key=lambda x: x["risk_score"], reverse=True)
 
+from datetime import datetime
+import pandas as pd
+import pytz
+import streamlit as st
+
 # ------------------------------------------------------------------------------
-# 8-1. 전체 순위 테이블
+# 장 운영 여부 확인 함수
 # ------------------------------------------------------------------------------
-table_data = []
-for idx, d in enumerate(full_ranked):
-    curr_fmt = f"{int(round(d['current_price'])):,}원" if d['target_info']['currency'] == "원" else f"${d['current_price']:.2f}"
-    table_data.append({
-        "순위": idx + 1,
+def check_market_status():
+    # 1. 한국 시장 (KST 기준 평일 09:00 ~ 15:30)
+    kst = pytz.timezone("Asia/Seoul")
+    now_kr = datetime.now(kst)
+    is_kr_weekday = now_kr.weekday() < 5  # 0: 월 ~ 4: 금
+    is_kr_time = (
+        (now_kr.hour == 9 and now_kr.minute >= 0)
+        or (9 < now_kr.hour < 15)
+        or (now_kr.hour == 15 and now_kr.minute <= 30)
+    )
+    kr_open = is_kr_weekday and is_kr_time
+
+    # 2. 미국 시장 (미국 동부시간 EST/EDT 기준 평일 09:30 ~ 16:00, 서머타임 자동 계산)
+    est = pytz.timezone("America/New_York")
+    now_us = datetime.now(est)
+    is_us_weekday = now_us.weekday() < 5
+    is_us_time = (
+        (now_us.hour == 9 and now_us.minute >= 30)
+        or (9 < now_us.hour < 16)
+        or (now_us.hour == 16 and now_us.minute == 0)
+    )
+    us_open = is_us_weekday and is_us_time
+
+    return kr_open, us_open
+
+
+kr_open, us_open = check_market_status()
+kr_badge = "🟢 장 중 (OPEN)" if kr_open else "🔴 장 마감 (CLOSED)"
+us_badge = "🟢 장 중 (OPEN)" if us_open else "🔴 장 마감 (CLOSED)"
+
+# ------------------------------------------------------------------------------
+# 8-1. 데이터 분류 및 처리
+# ------------------------------------------------------------------------------
+kr_data, us_data = [], []
+
+for d in full_ranked:
+    curr_fmt = (
+        f"{int(round(d['current_price'])):,}원"
+        if d["target_info"]["currency"] == "원"
+        else f"${d['current_price']:.2f}"
+    )
+
+    row = {
         "종목명": d["asset_name"],
         "시장": d["target_info"]["market_name"],
         "위험 지수": round(d["risk_score"], 1),
@@ -472,27 +515,66 @@ for idx, d in enumerate(full_ranked):
         "현재가": curr_fmt,
         "손익비": f"{d['rr_ratio']:.2f}",
         "추천 전략": d["strategy_title"].split("] ")[-1],
-        "휩소 위험": "⚠️ 주의" if d["is_whipsaw_risk"] else "✅ 안정"
-    })
+        "휩소 위험": "⚠️ 주의" if d["is_whipsaw_risk"] else "✅ 안정",
+    }
 
-df_rank = pd.DataFrame(table_data)
+    # 통화 단위 또는 시장명으로 국장 / 미장 분기
+    if d["target_info"]["currency"] == "원" or "한국" in d["target_info"]["market_name"]:
+        kr_data.append(row)
+    else:
+        us_data.append(row)
 
-st.markdown(f"#### 📊 전체 모니터링 풀 실시간 순위표 (총 {len(df_rank)}개 종목 수신 완료)")
-st.dataframe(
-    df_rank,
-    column_config={
-        "위험 지수": st.column_config.ProgressColumn(
-            "위험 지수",
-            help="100점에 가까울수록 극단적 고변동성 구간",
-            format="%.1f점",
-            min_value=0,
-            max_value=100,
-        ),
-    },
-    use_container_width=True,
-    hide_index=True,
-    height=360
-)
+# 순위 재부여 (각 시장별 1위부터 시작)
+for idx, row in enumerate(kr_data):
+    row["순위"] = idx + 1
+for idx, row in enumerate(us_data):
+    row["순위"] = idx + 1
+
+df_kr = pd.DataFrame(kr_data)
+df_us = pd.DataFrame(us_data)
+
+# '순위' 열을 맨 앞으로 재배치
+if not df_kr.empty:
+    cols = ["순위"] + [c for c in df_kr.columns if c != "순위"]
+    df_kr = df_kr[cols]
+if not df_us.empty:
+    cols = ["순위"] + [c for c in df_us.columns if c != "순위"]
+    df_us = df_us[cols]
+
+# ------------------------------------------------------------------------------
+# 렌더링 (탭 형태)
+# ------------------------------------------------------------------------------
+tab_kr, tab_us = st.tabs([f"🇰🇷 국내 시장 ({kr_badge})", f"🇺🇸 미국 시장 ({us_badge})"])
+
+col_config = {
+    "위험 지수": st.column_config.ProgressColumn(
+        "위험 지수",
+        help="100점에 가까울수록 극단적 고변동성 구간",
+        format="%.1f점",
+        min_value=0,
+        max_value=100,
+    ),
+}
+
+with tab_kr:
+    st.markdown(f"#### 🇰🇷 국내 모니터링 순위표 `상태: {kr_badge}` (총 {len(df_kr)}개)")
+    st.dataframe(
+        df_kr,
+        column_config=col_config,
+        use_container_width=True,
+        hide_index=True,
+        height=360,
+    )
+
+with tab_us:
+    st.markdown(f"#### 🇺🇸 미국 모니터링 순위표 `상태: {us_badge}` (총 {len(df_us)}개)")
+    st.dataframe(
+        df_us,
+        column_config=col_config,
+        use_container_width=True,
+        hide_index=True,
+        height=360,
+    )
 
 # ------------------------------------------------------------------------------
 # 8-2. 상세 종목 탭 렌더링
