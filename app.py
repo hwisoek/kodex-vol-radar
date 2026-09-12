@@ -299,19 +299,22 @@ def fetch_recent_1h_candles(symbol: str):
     try:
         session = requests.Session()
         session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            )
         })
         ticker = yf.Ticker(symbol, session=session)
         df_1h = ticker.history(period="60d", interval="1h")
         if df_1h is not None and not df_1h.empty and "Close" in df_1h.columns:
-            closes = df_1h["Close"].dropna().values
-            highs = df_1h["High"].dropna().values
-            lows = df_1h["Low"].dropna().values
-            if len(closes) >= 60:
+            df_clean = df_1h.dropna(subset=["Close", "High", "Low"])
+            if len(df_clean) >= 60:
                 return {
-                    "close": np.array(closes, dtype=float),
-                    "high": np.array(highs, dtype=float),
-                    "low": np.array(lows, dtype=float),
+                    "close": df_clean["Close"].values.astype(float),
+                    "high": df_clean["High"].values.astype(float),
+                    "low": df_clean["Low"].values.astype(float),
+                    "times": [
+                        t.strftime("%m/%d %H:%M") for t in df_clean.index
+                    ],
                 }
     except Exception:
         pass
@@ -524,96 +527,116 @@ def get_detailed_trading_strategy(
             )
 
 
-def analyze_60d_macro_regime(h_data):
+def analyze_60d_macro_regime(h_data, current_price, trading_hours=6.5):
     if h_data is None or len(h_data["close"]) < 60:
-        return {
-            "title": "⚪ [데이터 부족] 장기 궤적 분석 불가",
-            "color": "#64748b",
-            "desc": "충분한 1시간봉 데이터가 확보되지 않았습니다.",
-            "pos": 50.0,
-            "trend": "중립",
-            "action": "관망",
-        }
+        return None
 
     close = h_data["close"]
-    curr = close[-1]
-    ma20 = np.mean(close[-20:])
-    ma60 = np.mean(close[-60:])
-
     high_60d = np.max(h_data["high"])
     low_60d = np.min(h_data["low"])
-    spread = max(high_60d - low_60d, 1e-5)
-    macro_pos = float(np.clip(((curr - low_60d) / spread) * 100.0, 0.0, 100.0))
 
-    is_bull = curr > ma20 > ma60
-    is_bear = curr < ma20 < ma60
+    # 1. 1시간봉 로그 수익률 기반 5일 변동폭 계산
+    log_returns = np.diff(np.log(close))
+    hourly_vol = float(np.std(log_returns))
+    sigma_5d_pct = float(hourly_vol * np.sqrt(5.0 * trading_hours))
+    expected_range_5d = float(current_price * sigma_5d_pct)
+
+    # 2. 이동평균선 및 드리프트(방향성) 추정
+    ma20 = float(np.mean(close[-20:]))
+    ma60 = float(np.mean(close[-60:]))
+    trend_slope = float((current_price - ma60) / ma60)
+    drift_5d = float(expected_range_5d * 0.25 * np.tanh(trend_slope / 0.05))
+
+    # 3. 5일 예상 지지선 / 저항선
+    res_5d = float(current_price + drift_5d + expected_range_5d)
+    sup_5d = float(current_price + drift_5d - expected_range_5d)
+
+    # 4. 60일 채널 위치
+    spread = max(high_60d - low_60d, 1e-5)
+    macro_pos = float(
+        np.clip(((current_price - low_60d) / spread) * 100.0, 0.0, 100.0)
+    )
+
+    is_bull = current_price > ma20 > ma60
+    is_bear = current_price < ma20 < ma60
 
     if is_bull:
         if macro_pos >= 85.0:
-            return {
-                "title": "🚀 [스윙 01] 중기 대세 상승 과열권 (추격 자제 & 분할 익절)",
-                "color": "#ef4444",
-                "desc": "1시간봉 정배열의 강력한 상승세이나 60일 상단 저항선에 도달했습니다. 신규 스윙 매수를 멈추고 5분봉 단기 반등마다 분할 익절하세요.",
-                "pos": macro_pos,
-                "trend": "강한 상승",
-                "action": "분할 익절",
-            }
+            title = "🚀 [스윙 01] 중기 대세 상승 과열권 (추격 자제 & 분할 익절)"
+            color = "#ef4444"
+            desc = (
+                "1시간봉 정배열의 강력한 상승세이나 60일 상단 저항선에"
+                " 도달했습니다. 5일 목표가 도달 시 적극 분할 익절하세요."
+            )
+            trend, action = "강한 상승", "분할 익절"
         else:
-            return {
-                "title": "🌊 [스윙 02] 60일 정배열 눌림목 추세 추종 (바이앤홀드)",
-                "color": "#0ea5e9",
-                "desc": "중기 우상향 추세가 견고합니다. 5분봉 단기 조정(낙주/하단 터치) 발생 시 스윙 관점 적극 분할 매수 후 20선 이탈 전까지 홀딩하세요.",
-                "pos": macro_pos,
-                "trend": "상승 추세",
-                "action": "눌림목 매수",
-            }
+            title = "🌊 [스윙 02] 60일 정배열 눌림목 추세 추종 (바이앤홀드)"
+            color = "#0ea5e9"
+            desc = (
+                "중기 우상향 추세가 견고합니다. 5일 지지선 부근 눌림 발생 시"
+                " 스윙 분할 매수 후 20선 이탈 전까지 홀딩하세요."
+            )
+            trend, action = "상승 추세", "눌림목 매수"
     elif is_bear:
         if macro_pos <= 15.0:
-            return {
-                "title": "🕳️ [스윙 03] 60일 최저점 과매도 패닉 (역발상 분할 매집 준비)",
-                "color": "#10b981",
-                "desc": "중기 하락 추세의 바닥권 다지기 국면입니다. 단타 진입은 위험하나 중장기 스윙 관점에서는 3~4회 나누어 저점 적립 매집이 유효합니다.",
-                "pos": macro_pos,
-                "trend": "극 과매도",
-                "action": "분할 매집",
-            }
+            title = (
+                "🕳️ [스윙 03] 60일 최저점 과매도 패닉 (역발상 분할 매집 준비)"
+            )
+            color = "#10b981"
+            desc = (
+                "중기 하락 추세 바닥권입니다. 단타 진입은 위험하나 스윙"
+                " 관점에서는 5일 지지선 하단 분할 적립 매집이 유효합니다."
+            )
+            trend, action = "극 과매도", "분할 매집"
         else:
-            return {
-                "title": "⚡ [스윙 04] 중기 역배열 하락 지속 (현금 비중 극대화 / 숏 우위)",
-                "color": "#dc2626",
-                "desc": "20H/60H 이평선 아래에서 역배열 하락이 진행 중입니다. 5분봉 매수 신호가 떠도 반등 폭이 짧을 수 있으니 기술적 반등 시 탈출하세요.",
-                "pos": macro_pos,
-                "trend": "하락 추세",
-                "action": "비중 축소/숏",
-            }
+            title = "⚡ [스윙 04] 중기 역배열 하락 지속 (현금 비중 극대화 / 숏 우위)"
+            color = "#dc2626"
+            desc = (
+                "역배열 하락 추세입니다. 5일 저항선 부근 기술적 반등 시 현금을"
+                " 확보하고 보수적으로 대응하세요."
+            )
+            trend, action = "하락 추세", "비중 축소/숏"
     else:
         if macro_pos >= 70.0:
-            return {
-                "title": "🧱 [스윙 05] 60일 박스권 상단 저항 (비중 축소)",
-                "color": "#f59e0b",
-                "desc": "추세 없는 60일 횡보 박스권 상단입니다. 돌파 확인 전까지는 상단 저항선에서 비중을 줄이고 하단 눌림을 기다리세요.",
-                "pos": macro_pos,
-                "trend": "박스 상단",
-                "action": "매도/관망",
-            }
+            title = "🧱 [스윙 05] 60일 박스권 상단 저항 (비중 축소)"
+            color = "#f59e0b"
+            desc = (
+                "횡보 박스권 상단입니다. 5일 저항선 부근에서 비중을 축소하고"
+                " 하단 눌림을 기다리세요."
+            )
+            trend, action = "박스 상단", "매도/관망"
         elif macro_pos <= 30.0:
-            return {
-                "title": "📦 [스윙 06] 60일 박스권 하단 지지 (스윙 바닥 매수)",
-                "color": "#059669",
-                "desc": "박스권 하단선에 근접했습니다. 60일 최저점 라인을 손절 기준으로 잡고 박스 중심선(50%) 복귀를 목표로 스윙 매수가 유효합니다.",
-                "pos": macro_pos,
-                "trend": "박스 하단",
-                "action": "박스 매수",
-            }
+            title = "📦 [스윙 06] 60일 박스권 하단 지지 (스윙 바닥 매수)"
+            color = "#059669"
+            desc = (
+                "박스권 바닥선 근접 구간입니다. 5일 지지선을 손절 기준으로 잡고"
+                " 박스 중심선 복귀를 목표로 매수하세요."
+            )
+            trend, action = "박스 하단", "박스 매수"
         else:
-            return {
-                "title": "⏳ [스윙 07] 중기 수렴 지대 (에너지 응축/관망)",
-                "color": "#64748b",
-                "desc": "이평선이 얽혀 방향성이 정해지지 않은 중립 지대입니다. 큰 방향이 결정될 때까지 단타 위주로 대응하고 스윙은 관망하세요.",
-                "pos": macro_pos,
-                "trend": "수렴 횡보",
-                "action": "관망",
-            }
+            title = "⏳ [스윙 07] 중기 수렴 지대 (에너지 응축/관망)"
+            color = "#64748b"
+            desc = (
+                "이평선이 얽힌 수렴 구간입니다. 5일 진폭 밴드 돌파가 확인될"
+                " 때까지 스윙 포지션은 관망하세요."
+            )
+            trend, action = "수렴 횡보", "관망"
+
+    return {
+        "title": title,
+        "color": color,
+        "desc": desc,
+        "trend": trend,
+        "action": action,
+        "pos": macro_pos,
+        "res_5d": res_5d,
+        "sup_5d": sup_5d,
+        "range_5d": expected_range_5d,
+        "sigma_5d_pct": sigma_5d_pct,
+        "drift_5d": drift_5d,
+        "high_60d": high_60d,
+        "low_60d": low_60d,
+    }
 
 
 # ==============================================================================
@@ -1052,39 +1075,182 @@ for tab, data in zip(tabs, display_targets):
             unsafe_allow_html=True,
         )
 
-        # ----------------------------------------------------------------------
-        # 60일 1시간봉 중장기 스윙 가이드 렌더링
-        # ----------------------------------------------------------------------
+       # ======================================================================
+        # 60일 중기 스윙 지표 & 5일 예측 밴드 렌더링
+        # ======================================================================
+        st.markdown("---")
         h_data = fetch_recent_1h_candles(SYMBOL)
-        macro = analyze_60d_macro_regime(h_data)
+        trading_h = float(target_info.get("trading_hours", 6.5))
+        macro = analyze_60d_macro_regime(
+            h_data, current_price, trading_hours=trading_h
+        )
 
-        st.markdown(
-            f"""
-            <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 18px 20px; margin-bottom: 20px;">
+        if macro is not None:
+            res_str = (
+                f"{int(round(macro['res_5d'])):,}원"
+                if CURRENCY == "원"
+                else f"${macro['res_5d']:.2f}"
+            )
+            sup_str = (
+                f"{int(round(macro['sup_5d'])):,}원"
+                if CURRENCY == "원"
+                else f"${macro['sup_5d']:.2f}"
+            )
+            range_5d_str = (
+                f"{int(round(macro['range_5d'])):,}원"
+                if CURRENCY == "원"
+                else f"${macro['range_5d']:.2f}"
+            )
+
+            # 1. 스윙 가이드 헤더 카드
+            st.markdown(
+                f"""
+            <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 16px 20px; margin-bottom: 14px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 12px; flex-wrap: wrap;">
                     <div style="font-size: 15px; font-weight: 700; color: {macro['color']};">
-                        🧭 [60일 1H 스윙 가이드] {macro['title'].split('] ')[-1]}
+                        🧭 {macro['title']}
                     </div>
                     <div style="font-size: 12px; color: #475569;">
-                        중기 추세 국면: <b>{macro['trend']}</b> | 추천 액션: <b>{macro['action']}</b>
+                        중기 추세 국면: <b>{macro['trend']}</b> | 권장 액션: <b>{macro['action']}</b>
                     </div>
                 </div>
                 <div style="display: flex; justify-content: space-between; font-size: 11px; color: #64748b; margin-bottom: 4px;">
-                    <span>60일 최저점 지지</span>
+                    <span>60일 최저점 ({int(round(macro['low_60d'])):,}원 if CURRENCY == '원' else f"${macro['low_60d']:.2f}")</span>
                     <span style="font-weight: 700; color: #0f172a;">60일 대역폭 내 위치: {macro['pos']:.1f}%</span>
-                    <span>60일 최고점 저항</span>
+                    <span>60일 최고점 ({int(round(macro['high_60d'])):,}원 if CURRENCY == '원' else f"${macro['high_60d']:.2f}")</span>
                 </div>
                 <div style="width: 100%; background-color: #e2e8f0; border-radius: 6px; height: 8px; overflow: hidden; margin-bottom: 12px;">
                     <div style="width: {macro['pos']}%; background: linear-gradient(90deg, #10b981 0%, #0ea5e9 50%, #ef4444 100%); height: 100%;"></div>
                 </div>
                 <div style="font-size: 13px; color: #334155; line-height: 1.6; background-color: #ffffff; padding: 10px 14px; border-radius: 6px; border: 1px solid #e2e8f0;">
-                    📌 <b>스윙 운용 전략:</b> {macro['desc']}
+                    📌 <b>스윙 가이드:</b> {macro['desc']}
                 </div>
             </div>
             """,
-            unsafe_allow_html=True,
-        )
+                unsafe_allow_html=True,
+            )
 
+            # 2. 5일 예상 변동성 지표 카드 3종
+            m1, m2, m3 = st.columns(3)
+            m1.metric(
+                "스윙 단기 저항 (1차 목표가)",
+                res_str,
+                delta=f"+{macro['sigma_5d_pct']*100:.2f}% (상방)",
+                delta_color="normal",
+            )
+            m2.metric(
+                "예상 5일 진폭 (±1σ)",
+                f"±{range_5d_str}",
+                delta=f"5일 변동성: {macro['sigma_5d_pct']*100:.2f}%",
+                delta_color="off",
+            )
+            m3.metric(
+                "스윙 단기 지지 (손절선)",
+                sup_str,
+                delta=f"-{macro['sigma_5d_pct']*100:.2f}% (하방)",
+                delta_color="inverse",
+            )
+
+            # 3. 60일 궤적 & 5일 예측 밴드 Plotly 차트
+            h_closes = h_data["close"]
+            h_times = h_data["times"]
+
+            # 5일 예측 밴드 (D+1 ~ D+5 전개)
+            future_days = ["현재", "D+1", "D+2", "D+3", "D+4", "D+5"]
+            future_upper_swing = [current_price]
+            future_lower_swing = [current_price]
+
+            for d_idx in range(1, 6):
+                scale = np.sqrt(d_idx / 5.0)
+                d_drift = macro["drift_5d"] * (d_idx / 5.0)
+                d_range = macro["range_5d"] * scale
+                future_upper_swing.append(float(current_price + d_drift + d_range))
+                future_lower_swing.append(float(current_price + d_drift - d_range))
+
+            fig_swing = go.Figure()
+
+            # 과거 60일 1시간봉 실체결 궤적
+            fig_swing.add_trace(
+                go.Scatter(
+                    x=h_times,
+                    y=h_closes,
+                    mode="lines",
+                    name="60일 1H 종가",
+                    line=dict(color="#3b82f6", width=2.0),
+                )
+            )
+
+            # 5일 예측 하한선 (-1σ)
+            fig_swing.add_trace(
+                go.Scatter(
+                    x=future_days,
+                    y=future_lower_swing,
+                    mode="lines",
+                    name="5일 예상 하한 (-1σ)",
+                    line=dict(
+                        color="rgba(16,185,129,0.85)", width=1.5, dash="dot"
+                    ),
+                )
+            )
+
+            # 5일 예측 상한선 (+1σ) 및 밴드 영역
+            fig_swing.add_trace(
+                go.Scatter(
+                    x=future_days,
+                    y=future_upper_swing,
+                    mode="lines",
+                    name="5일 예상 상한 (+1σ)",
+                    line=dict(
+                        color="rgba(239,68,68,0.85)", width=1.5, dash="dot"
+                    ),
+                    fill="tonexty",
+                    fillcolor="rgba(59,130,246,0.12)",
+                )
+            )
+
+            # 현재 분기선
+            last_h_time = h_times[-1]
+            fig_swing.add_shape(
+                type="line",
+                x0=last_h_time,
+                x1=last_h_time,
+                y0=0,
+                y1=1,
+                yref="paper",
+                line=dict(color="#64748b", width=1.5, dash="dash"),
+            )
+
+            # 눈금 축약 (글자 겹침 방지: 약 10영업일 간격 추출)
+            stride_h = max(len(h_times) // 8, 1)
+            past_ticks_h = [h_times[i] for i in range(0, len(h_times), stride_h)]
+            if last_h_time not in past_ticks_h:
+                past_ticks_h.append(last_h_time)
+            custom_ticks_swing = past_ticks_h + ["D+2", "D+5"]
+
+            fig_swing.update_layout(
+                title=dict(
+                    text=f"{asset_name} - 60일 궤적 & 5일 선행 예측 밴드 (스윙 레이더)",
+                    font=dict(size=15, color="#1e293b"),
+                ),
+                xaxis=dict(
+                    title="타임라인 (1시간 단위 / D+일자)",
+                    type="category",
+                    tickmode="array",
+                    tickvals=custom_ticks_swing,
+                    gridcolor="#f1f5f9",
+                ),
+                yaxis=dict(title=f"가격 ({CURRENCY})", gridcolor="#f1f5f9"),
+                plot_bgcolor="#ffffff",
+                paper_bgcolor="rgba(0,0,0,0)",
+                template="plotly_white",
+                height=430,
+                margin=dict(l=15, r=15, t=50, b=15),
+                hovermode="x unified",
+            )
+
+            st.plotly_chart(fig_swing, use_container_width=True)
+        else:
+            st.info("💡 60일 1시간봉 데이터를 수신할 수 없어 스윙 분석을 생략합니다.")
         # ----------------------------------------------------------------------
         # 인터랙티브 시계열 차트 (동적 타임라인 & 범주형 X축)
         # ----------------------------------------------------------------------
