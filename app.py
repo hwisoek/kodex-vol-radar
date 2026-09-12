@@ -584,11 +584,10 @@ def analyze_60d_macro_regime(
             "regime": "박스권 횡보",
         }
 
-  # [자동 인버스 판별 로직]
-  # 종목명에 아래 키워드가 포함되어 있으면 자동으로 인버스로 인식
-  inverse_keywords = ["인버스", "SQQQ", "SOXS", "SPXU", "TZA", "TSLS", "FNGD", "LABD"]
-  is_inverse = any(kw in ticker_name.upper() for kw in inverse_keywords)
-
+# [자동 인버스 판별 로직]
+# 종목명에 아래 키워드가 포함되어 있으면 자동으로 인버스로 인식
+inverse_keywords = ["인버스", "SQQQ", "SOXS", "SPXU", "TZA", "TSLS", "FNGD", "LABD"]
+is_inverse = any(kw in ticker_name.upper() for kw in inverse_keywords)
   close = h_data["close"]
   high_60d = np.max(h_data["high"])
   low_60d = np.min(h_data["low"])
