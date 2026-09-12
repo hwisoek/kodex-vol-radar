@@ -369,8 +369,8 @@ def get_detailed_trading_strategy(
                     "버텨주던 중요 가격대가 뚫리면서 급락 중입니다. 매수 포지션은 즉시 정리하시고 하락에 대비하십시오.",
                     "🚨 고위험 (하방돌파)",
                 )
-            elif channel_pos >= 80.0 and not is_strong_trend_down:
-                # ▼▼▼ [보정] ARKK처럼 순간 스파이크 후 고점에 붙어 있는 경우 ▼▼▼
+            elif channel_pos >= 75.0:
+                # ▼▼▼ 추세 강도 조건 없이 채널 75% 이상 고점이면 무조건 과열로 분류 ▼▼▼
                 return (
                     "⚠️ [단기 전략 06-B] 단기 과열 고점 횡보 (추격 자제)",
                     "#ea580c",
