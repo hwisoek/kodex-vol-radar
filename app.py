@@ -1065,6 +1065,9 @@ def process_single_asset(asset_name, target_info):
         # ----------------------------------------------------------------------
         # 60일 1시간봉 기반 [ML 변동성 예측 & 레짐 가이드] 백테스팅 연산 (안전 버전)
         # ----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
+        # 60일 1시간봉 기반 [ML 변동성 예측 & 레짐 가이드] 백테스팅 연산
+        # ----------------------------------------------------------------------
         trade_returns = []
         try:
             h_data = fetch_recent_1h_candles(symbol)
@@ -1121,24 +1124,6 @@ def process_single_asset(asset_name, target_info):
 
                 if position == "LONG":
                     trade_returns.append(float((h_prices[-1] - entry_price) / entry_price))
-        except Exception as e:
-
-                        # [ML 가이드 청산 조건]
-                        # 1) 동적 저항선(+1σ) 도달 (익절)
-                        # 2) 손절선(-2.0%) 도달
-                        # 3) 변동성 급증 경보 (레짐 붕괴 시 즉시 탈출)
-                        # 4) 타임아웃
-                        is_take_profit = curr_p >= dyn_upper
-                        is_stop_loss = current_pnl <= stop_loss_limit
-                        is_vol_spike = curr_log_rv >= rv_threshold
-                        is_time_over = holding_period >= max_holding_bars
-
-                        if is_take_profit or is_stop_loss or is_vol_spike or is_time_over:
-                            trade_returns.append(current_pnl)
-                            position = None
-
-                if position == "LONG":
-                    trade_returns.append((h_prices[-1] - entry_price) / entry_price)
         except Exception:
             trade_returns = []
 
@@ -1169,7 +1154,7 @@ def process_single_asset(asset_name, target_info):
             "dynamic_asset_offset": dynamic_asset_offset,
             "raw_pred_log_rv": raw_pred_log_rv,
             "fpc_scores": fpc_scores,
-            "trade_returns": trade_returns,  # 통합 백테스팅용 거래 손익 배열 반환
+            "trade_returns": trade_returns,
         }
     except Exception:
         return None
