@@ -1136,7 +1136,9 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                             position = None
 
                 if position == "LONG":
-                    trade_returns.append(float((h_prices[-1] - entry_price) / entry_price))
+                    final_gross_pnl = (h_prices[-1] - entry_price) / entry_price
+                    net_pnl = final_gross_pnl - 0.0025
+                    trade_returns.append(float(net_pnl))
         except Exception:
             trade_returns = []
 
