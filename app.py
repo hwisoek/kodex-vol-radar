@@ -1,16 +1,17 @@
-import streamlit as st
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, time, timedelta
+import xml.etree.ElementTree as ET
+
+import joblib
 import numpy as np
 import pandas as pd
-import joblib
-import yfinance as yf
-import requests
-import xml.etree.ElementTree as ET
 import plotly.graph_objects as go
-from scipy.interpolate import make_interp_spline
-from streamlit_autorefresh import st_autorefresh
-from datetime import datetime, time
 import pytz
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import requests
+from scipy.interpolate import make_interp_spline
+import streamlit as st
+from streamlit_autorefresh import st_autorefresh
+import yfinance as yf
 
 # ==============================================================================
 # 1. 페이지 레이아웃 및 자동 새로고침 설정
@@ -151,8 +152,33 @@ TICKER_MAP = {
 # ==============================================================================
 # 3. 장 상태 판별 함수
 # ==============================================================================
+def check_market_status():
+    # 1. 한국 시장 (KST 평일 09:00 ~ 15:30)
+    kst = pytz.timezone("Asia/Seoul")
+    now_kr = datetime.now(kst)
+    is_kr_weekday = now_kr.weekday() < 5
+    is_kr_time = (
+        (now_kr.hour == 9 and now_kr.minute >= 0)
+        or (9 < now_kr.hour < 15)
+        or (now_kr.hour == 15 and now_kr.minute <= 30)
+    )
+    kr_open = is_kr_weekday and is_kr_time
 
-def check_market_status(target_tz_str: str, is_kr: bool):
+    # 2. 미국 시장 (EST/EDT 평일 09:30 ~ 16:00, 서머타임 자동 계산)
+    est = pytz.timezone("America/New_York")
+    now_us = datetime.now(est)
+    is_us_weekday = now_us.weekday() < 5
+    is_us_time = (
+        (now_us.hour == 9 and now_us.minute >= 30)
+        or (9 < now_us.hour < 16)
+        or (now_us.hour == 16 and now_us.minute == 0)
+    )
+    us_open = is_us_weekday and is_us_time
+
+    return kr_open, us_open
+
+
+def get_single_market_status_text(target_tz_str: str, is_kr: bool):
     kst = pytz.timezone("Asia/Seoul")
     now_kst = datetime.now(kst)
 
@@ -163,15 +189,17 @@ def check_market_status(target_tz_str: str, is_kr: bool):
     is_weekend = weekday >= 5
 
     if is_kr:
-        open_time = time(9, 0)
-        close_time = time(15, 30)
-        is_open = not is_weekend and open_time <= now_target.time() <= close_time
+        is_open = (
+            not is_weekend and time(9, 0) <= now_target.time() <= time(15, 30)
+        )
         hours_str = "09:00 ~ 15:30 KST"
-        time_display_str = f"한국: <b>{now_kst.strftime('%Y-%m-%d %H:%M:%S')} KST</b>"
+        time_display_str = (
+            f"한국: <b>{now_kst.strftime('%Y-%m-%d %H:%M:%S')} KST</b>"
+        )
     else:
-        open_time = time(9, 30)
-        close_time = time(16, 0)
-        is_open = not is_weekend and open_time <= now_target.time() <= close_time
+        is_open = (
+            not is_weekend and time(9, 30) <= now_target.time() <= time(16, 0)
+        )
         tz_abbr = now_target.strftime("%Z")
         hours_str = f"현지 09:30 ~ 16:00 {tz_abbr}"
         time_display_str = (
@@ -185,10 +213,10 @@ def check_market_status(target_tz_str: str, is_kr: bool):
 # ==============================================================================
 # 4. 모델 로드
 # ==============================================================================
-
 @st.cache_resource
 def load_model():
     return joblib.load("model_artifacts.pkl")
+
 
 try:
     artifacts = load_model()
@@ -202,13 +230,12 @@ except Exception as e:
     st.error(f"모델 아티팩트(model_artifacts.pkl) 로드 실패: {e}")
     st.stop()
 
-
 # ==============================================================================
-# 5. 실시간 5분봉 수집 함수
+# 5. 데이터 수집 함수 (5분봉 & 60일 1시간봉)
 # ==============================================================================
-
 @st.cache_data(ttl=60)
 def fetch_recent_5m_candles(symbol: str, is_kr: bool, naver_symbol: str = ""):
+    # 1) yfinance
     try:
         session = requests.Session()
         session.headers.update({
@@ -216,7 +243,6 @@ def fetch_recent_5m_candles(symbol: str, is_kr: bool, naver_symbol: str = ""):
         })
         ticker = yf.Ticker(symbol, session=session)
         df_yf = ticker.history(period="5d", interval="5m", prepost=True)
-
         if df_yf is not None and not df_yf.empty and "Close" in df_yf.columns:
             prices = df_yf["Close"].dropna().values
             if len(prices) >= 24:
@@ -224,15 +250,20 @@ def fetch_recent_5m_candles(symbol: str, is_kr: bool, naver_symbol: str = ""):
     except Exception:
         pass
 
+    # 2) 야후 파이낸스 직접 호출 (미장용)
     if not is_kr:
         try:
             url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=5m&range=5d&includePrePost=true"
-            res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=6)
+            res = requests.get(
+                url, headers={"User-Agent": "Mozilla/5.0"}, timeout=6
+            )
             if res.status_code == 200:
                 data = res.json()
                 result = data.get("chart", {}).get("result", [])
                 if result:
-                    indicators = result[0].get("indicators", {}).get("quote", [{}])[0]
+                    indicators = (
+                        result[0].get("indicators", {}).get("quote", [{}])[0]
+                    )
                     closes = indicators.get("close", [])
                     clean_closes = [c for c in closes if c is not None]
                     if len(clean_closes) >= 24:
@@ -240,10 +271,13 @@ def fetch_recent_5m_candles(symbol: str, is_kr: bool, naver_symbol: str = ""):
         except Exception:
             pass
 
+    # 3) 네이버 증권 API (국장용)
     if is_kr and naver_symbol:
         try:
             url = f"https://fchart.stock.naver.com/sise.nhn?symbol={naver_symbol}&timeframe=minute&count=120&requestType=0"
-            res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+            res = requests.get(
+                url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5
+            )
             res.raise_for_status()
             root = ET.fromstring(res.text)
             items = root.findall(".//item")
@@ -257,22 +291,43 @@ def fetch_recent_5m_candles(symbol: str, is_kr: bool, naver_symbol: str = ""):
         except Exception:
             pass
 
-    raise ValueError(f"{symbol} 데이터 수집 실패")
+    raise ValueError(f"{symbol} 5분봉 데이터 수집 실패")
+
+
+@st.cache_data(ttl=300)
+def fetch_recent_1h_candles(symbol: str):
+    try:
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        })
+        ticker = yf.Ticker(symbol, session=session)
+        df_1h = ticker.history(period="60d", interval="1h")
+        if df_1h is not None and not df_1h.empty and "Close" in df_1h.columns:
+            closes = df_1h["Close"].dropna().values
+            highs = df_1h["High"].dropna().values
+            lows = df_1h["Low"].dropna().values
+            if len(closes) >= 60:
+                return {
+                    "close": np.array(closes, dtype=float),
+                    "high": np.array(highs, dtype=float),
+                    "low": np.array(lows, dtype=float),
+                }
+    except Exception:
+        pass
+    return None
 
 
 # ==============================================================================
-# 6. 전략 매핑 함수
+# 6. 전략 엔진 (5분봉 단타 매트릭스 & 60일 스윙 매트릭스)
 # ==============================================================================
-
 def get_detailed_trading_strategy(
     risk_score, channel_pos, rr_ratio, is_whipsaw_risk, trend_intensity
 ):
     is_strong_trend_up = trend_intensity > 0.3
     is_strong_trend_down = trend_intensity < -0.3
 
-    # --------------------------------------------------------------------------
-    # 1. 극단적 고변동성 (85.0 이상) - 슬리피지 및 지표 후행성 극대화 구간
-    # --------------------------------------------------------------------------
+    # 1. 극단적 고변동성 (85.0 이상)
     if risk_score >= 85.0:
         if is_whipsaw_risk:
             if channel_pos > 70.0:
@@ -319,9 +374,7 @@ def get_detailed_trading_strategy(
                     "🚨 고위험 (확장위험)",
                 )
 
-    # --------------------------------------------------------------------------
     # 2. 고변동성 추세/과열 (65.0 ~ 84.9)
-    # --------------------------------------------------------------------------
     elif risk_score >= 65.0:
         if is_whipsaw_risk:
             if rr_ratio > 1.2:
@@ -361,9 +414,7 @@ def get_detailed_trading_strategy(
                     "🔥 추세 지속",
                 )
 
-    # --------------------------------------------------------------------------
     # 3. 중변동성 표준 국면 (40.0 ~ 64.9)
-    # --------------------------------------------------------------------------
     elif risk_score >= 40.0:
         if is_whipsaw_risk:
             if channel_pos > 50.0:
@@ -399,7 +450,7 @@ def get_detailed_trading_strategy(
                 return (
                     "⏳ [전략 16] 수렴 구간 브레이크아웃 대기 (방향성 탐색)",
                     "#0ea5e9",
-                    "위아래 진폭이 압축되며 에너지를 모으는 중간 지대. 임계값(Threshold) 이탈 방향이 확정될 때까지 신규 포지션 관망.",
+                    "위아래 진폭이 압축되며 에너지를 모으는 중간 지대. 임계값 이탈 방향이 확정될 때까지 신규 포지션 관망.",
                     "⚖️ 중립 (수렴)",
                 )
             else:
@@ -410,9 +461,7 @@ def get_detailed_trading_strategy(
                     "⚖️ 보통 (채널)",
                 )
 
-    # --------------------------------------------------------------------------
-    # 4. 저변동성 안정 국면 (20.0 ~ 39.9) - 과적합 및 수수료 잠식 방어
-    # --------------------------------------------------------------------------
+    # 4. 저변동성 안정 국면 (20.0 ~ 39.9)
     elif risk_score >= 20.0:
         if is_whipsaw_risk:
             return (
@@ -443,9 +492,7 @@ def get_detailed_trading_strategy(
                 "🛡️ 안정 (횡보)",
             )
 
-    # --------------------------------------------------------------------------
     # 5. 극저변동성 에너지 응축 (20.0 미만)
-    # --------------------------------------------------------------------------
     else:
         if is_whipsaw_risk:
             return (
@@ -458,7 +505,7 @@ def get_detailed_trading_strategy(
             return (
                 "🔋 [전략 22] 볼린저 스퀴즈 상단 밀착 (폭발 대기)",
                 "#059669",
-                "장기 횡보 후 가격이 상단선에 바짝 밀착됨. 조만간 상방으로 강한 추세가 분출(Volatility Breakout)될 가능성에 대비.",
+                "장기 횡보 후 가격이 상단선에 바짝 밀착됨. 조만간 상방으로 강한 추세가 분출될 가능성에 대비.",
                 "🔋 응축 (상방대기)",
             )
         elif channel_pos < 20.0:
@@ -477,16 +524,111 @@ def get_detailed_trading_strategy(
             )
 
 
+def analyze_60d_macro_regime(h_data):
+    if h_data is None or len(h_data["close"]) < 60:
+        return {
+            "title": "⚪ [데이터 부족] 장기 궤적 분석 불가",
+            "color": "#64748b",
+            "desc": "충분한 1시간봉 데이터가 확보되지 않았습니다.",
+            "pos": 50.0,
+            "trend": "중립",
+            "action": "관망",
+        }
+
+    close = h_data["close"]
+    curr = close[-1]
+    ma20 = np.mean(close[-20:])
+    ma60 = np.mean(close[-60:])
+
+    high_60d = np.max(h_data["high"])
+    low_60d = np.min(h_data["low"])
+    spread = max(high_60d - low_60d, 1e-5)
+    macro_pos = float(np.clip(((curr - low_60d) / spread) * 100.0, 0.0, 100.0))
+
+    is_bull = curr > ma20 > ma60
+    is_bear = curr < ma20 < ma60
+
+    if is_bull:
+        if macro_pos >= 85.0:
+            return {
+                "title": "🚀 [스윙 01] 중기 대세 상승 과열권 (추격 자제 & 분할 익절)",
+                "color": "#ef4444",
+                "desc": "1시간봉 정배열의 강력한 상승세이나 60일 상단 저항선에 도달했습니다. 신규 스윙 매수를 멈추고 5분봉 단기 반등마다 분할 익절하세요.",
+                "pos": macro_pos,
+                "trend": "강한 상승",
+                "action": "분할 익절",
+            }
+        else:
+            return {
+                "title": "🌊 [스윙 02] 60일 정배열 눌림목 추세 추종 (바이앤홀드)",
+                "color": "#0ea5e9",
+                "desc": "중기 우상향 추세가 견고합니다. 5분봉 단기 조정(낙주/하단 터치) 발생 시 스윙 관점 적극 분할 매수 후 20선 이탈 전까지 홀딩하세요.",
+                "pos": macro_pos,
+                "trend": "상승 추세",
+                "action": "눌림목 매수",
+            }
+    elif is_bear:
+        if macro_pos <= 15.0:
+            return {
+                "title": "🕳️ [스윙 03] 60일 최저점 과매도 패닉 (역발상 분할 매집 준비)",
+                "color": "#10b981",
+                "desc": "중기 하락 추세의 바닥권 다지기 국면입니다. 단타 진입은 위험하나 중장기 스윙 관점에서는 3~4회 나누어 저점 적립 매집이 유효합니다.",
+                "pos": macro_pos,
+                "trend": "극 과매도",
+                "action": "분할 매집",
+            }
+        else:
+            return {
+                "title": "⚡ [스윙 04] 중기 역배열 하락 지속 (현금 비중 극대화 / 숏 우위)",
+                "color": "#dc2626",
+                "desc": "20H/60H 이평선 아래에서 역배열 하락이 진행 중입니다. 5분봉 매수 신호가 떠도 반등 폭이 짧을 수 있으니 기술적 반등 시 탈출하세요.",
+                "pos": macro_pos,
+                "trend": "하락 추세",
+                "action": "비중 축소/숏",
+            }
+    else:
+        if macro_pos >= 70.0:
+            return {
+                "title": "🧱 [스윙 05] 60일 박스권 상단 저항 (비중 축소)",
+                "color": "#f59e0b",
+                "desc": "추세 없는 60일 횡보 박스권 상단입니다. 돌파 확인 전까지는 상단 저항선에서 비중을 줄이고 하단 눌림을 기다리세요.",
+                "pos": macro_pos,
+                "trend": "박스 상단",
+                "action": "매도/관망",
+            }
+        elif macro_pos <= 30.0:
+            return {
+                "title": "📦 [스윙 06] 60일 박스권 하단 지지 (스윙 바닥 매수)",
+                "color": "#059669",
+                "desc": "박스권 하단선에 근접했습니다. 60일 최저점 라인을 손절 기준으로 잡고 박스 중심선(50%) 복귀를 목표로 스윙 매수가 유효합니다.",
+                "pos": macro_pos,
+                "trend": "박스 하단",
+                "action": "박스 매수",
+            }
+        else:
+            return {
+                "title": "⏳ [스윙 07] 중기 수렴 지대 (에너지 응축/관망)",
+                "color": "#64748b",
+                "desc": "이평선이 얽혀 방향성이 정해지지 않은 중립 지대입니다. 큰 방향이 결정될 때까지 단타 위주로 대응하고 스윙은 관망하세요.",
+                "pos": macro_pos,
+                "trend": "수렴 횡보",
+                "action": "관망",
+            }
+
+
 # ==============================================================================
 # 7. 단일 종목 연산 워커 함수
 # ==============================================================================
-
 def process_single_asset(asset_name, target_info):
     symbol = str(target_info["symbol"])
-    is_open, time_display_str, hours_desc = check_market_status(target_info["tz"], target_info["is_kr"])
+    is_open, time_display_str, hours_desc = get_single_market_status_text(
+        target_info["tz"], target_info["is_kr"]
+    )
 
     try:
-        prices = fetch_recent_5m_candles(symbol, target_info["is_kr"], target_info.get("naver_symbol", ""))
+        prices = fetch_recent_5m_candles(
+            symbol, target_info["is_kr"], target_info.get("naver_symbol", "")
+        )
         if len(prices) != 24:
             return None
 
@@ -501,11 +643,11 @@ def process_single_asset(asset_name, target_info):
 
         if len(fpc_scores) < 3:
             padded = np.zeros(3)
-            padded[:len(fpc_scores)] = fpc_scores
+            padded[: len(fpc_scores)] = fpc_scores
             fpc_scores = padded
 
         in_log_ret = np.diff(log_prices)
-        sum_sq = float(np.sum(in_log_ret ** 2))
+        sum_sq = float(np.sum(in_log_ret**2))
         in_rv = float(np.log(sum_sq + 1e-8))
 
         feat_list = [in_rv] + [float(val) for val in fpc_scores]
@@ -513,7 +655,6 @@ def process_single_asset(asset_name, target_info):
         X_scaled = scaler.transform(X)
 
         raw_pred_log_rv = float(model.predict(X_scaled)[0])
-
         hist_median = float(np.median(rv_history))
         dynamic_asset_offset = float(np.clip(in_rv - hist_median, -1.5, 1.5))
         adjusted_log_rv = float(raw_pred_log_rv + (dynamic_asset_offset * 0.4))
@@ -528,7 +669,11 @@ def process_single_asset(asset_name, target_info):
         past_min = float(np.min(prices))
         past_max = float(np.max(prices))
         price_spread = max(past_max - past_min, 1e-5)
-        channel_pos = float(np.clip(((current_price - past_min) / price_spread) * 100.0, 0.0, 100.0))
+        channel_pos = float(
+            np.clip(
+                ((current_price - past_min) / price_spread) * 100.0, 0.0, 100.0
+            )
+        )
 
         recent_return = (current_price - prices[0]) / prices[0]
         trend_intensity = float(np.tanh(recent_return / 0.005))
@@ -542,7 +687,12 @@ def process_single_asset(asset_name, target_info):
         rr_ratio = float(reward_dist / risk_dist)
         is_whipsaw_risk = bool(abs(float(fpc_scores[2])) > 0.015)
 
-        strategy_title, strategy_color, strategy_desc, risk_label = get_detailed_trading_strategy(
+        (
+            strategy_title,
+            strategy_color,
+            strategy_desc,
+            risk_label,
+        ) = get_detailed_trading_strategy(
             risk_score, channel_pos, rr_ratio, is_whipsaw_risk, trend_intensity
         )
 
@@ -572,7 +722,7 @@ def process_single_asset(asset_name, target_info):
             "pred_rv": pred_rv,
             "dynamic_asset_offset": dynamic_asset_offset,
             "raw_pred_log_rv": raw_pred_log_rv,
-            "fpc_scores": fpc_scores
+            "fpc_scores": fpc_scores,
         }
     except Exception:
         return None
@@ -581,11 +731,9 @@ def process_single_asset(asset_name, target_info):
 # ==============================================================================
 # 8. 메인 렌더링 & 병렬 계산
 # ==============================================================================
-
-st.markdown("## 🎯 글로벌 실시간 변동성 스캐너 & 순위 레이더")
+st.markdown("## 🎯 글로벌 실시간 변동성 스캐너 & 멀티 프레임 레이더")
 
 all_calculated = []
-
 with st.spinner("TICKER_MAP 내 전체 종목의 변동성 데이터를 병렬 스캔 중..."):
     with ThreadPoolExecutor(max_workers=8) as executor:
         futures = [
@@ -601,51 +749,15 @@ if not all_calculated:
     st.error("데이터 수집에 성공한 종목이 없습니다. 네트워크 환경을 확인하세요.")
     st.stop()
 
-# 정렬
 full_ranked = sorted(all_calculated, key=lambda x: x["risk_score"], reverse=True)
 
-from datetime import datetime
-import pandas as pd
-import pytz
-import streamlit as st
-
 # ------------------------------------------------------------------------------
-# 장 운영 여부 확인 함수
+# 8-1. 순위표 (국장/미장 탭 분리, 상태 배지, 순위 변동 추적)
 # ------------------------------------------------------------------------------
-def check_market_status():
-    # 1. 한국 시장 (KST 기준 평일 09:00 ~ 15:30)
-    kst = pytz.timezone("Asia/Seoul")
-    now_kr = datetime.now(kst)
-    is_kr_weekday = now_kr.weekday() < 5  # 0: 월 ~ 4: 금
-    is_kr_time = (
-        (now_kr.hour == 9 and now_kr.minute >= 0)
-        or (9 < now_kr.hour < 15)
-        or (now_kr.hour == 15 and now_kr.minute <= 30)
-    )
-    kr_open = is_kr_weekday and is_kr_time
-
-    # 2. 미국 시장 (미국 동부시간 EST/EDT 기준 평일 09:30 ~ 16:00, 서머타임 자동 계산)
-    est = pytz.timezone("America/New_York")
-    now_us = datetime.now(est)
-    is_us_weekday = now_us.weekday() < 5
-    is_us_time = (
-        (now_us.hour == 9 and now_us.minute >= 30)
-        or (9 < now_us.hour < 16)
-        or (now_us.hour == 16 and now_us.minute == 0)
-    )
-    us_open = is_us_weekday and is_us_time
-
-    return kr_open, us_open
-
-
 kr_open, us_open = check_market_status()
 kr_badge = "🟢 장 중 (OPEN)" if kr_open else "🔴 장 마감 (CLOSED)"
 us_badge = "🟢 장 중 (OPEN)" if us_open else "🔴 장 마감 (CLOSED)"
 
-# ------------------------------------------------------------------------------
-# 8-1. 데이터 분류 및 처리
-# ------------------------------------------------------------------------------
-# ✅ 1. 이전 순위를 기억하기 위한 session_state 초기화
 if "prev_ranks" not in st.session_state:
     st.session_state["prev_ranks"] = {}
 
@@ -670,69 +782,67 @@ for d in full_ranked:
         "휩소 위험": "⚠️ 주의" if d["is_whipsaw_risk"] else "✅ 안정",
     }
 
-    if d["target_info"]["currency"] == "원" or "한국" in d["target_info"]["market_name"]:
+    if (
+        d["target_info"]["currency"] == "원"
+        or "한국" in d["target_info"]["market_name"]
+    ):
         kr_data.append(row)
     else:
         us_data.append(row)
 
-# ✅ 2. 순위 재부여 및 변동폭(▲/▼) 계산
 new_prev_ranks = {}
+
 
 def apply_rank_and_change(data_list):
     for idx, row in enumerate(data_list):
         current_rank = idx + 1
         asset_name = row["종목명"]
-        
-        # 이전 순위 불러오기 (처음 등장한 종목이면 현재 순위와 동일하게 취급)
         prev_rank = st.session_state["prev_ranks"].get(asset_name, current_rank)
-        
-        # 순위 변동 계산 (예: 예전 5위 -> 지금 3위 = +2 상승)
         change = prev_rank - current_rank
-        
+
         if change > 0:
             row["순위"] = f"{current_rank} (▲ {change})"
         elif change < 0:
             row["순위"] = f"{current_rank} (▼ {abs(change)})"
         else:
             row["순위"] = f"{current_rank} (-)"
-            
-        # 다음 갱신 때 비교하기 위해 현재 순위 저장
+
         new_prev_ranks[asset_name] = current_rank
+
 
 apply_rank_and_change(kr_data)
 apply_rank_and_change(us_data)
-
-# 최신 순위 상태로 session_state 업데이트
 st.session_state["prev_ranks"].update(new_prev_ranks)
 
 df_kr = pd.DataFrame(kr_data)
 df_us = pd.DataFrame(us_data)
 
-# '순위' 열을 맨 앞으로 재배치
 if not df_kr.empty:
-    cols = ["순위"] + [c for c in df_kr.columns if c != "순위"]
-    df_kr = df_kr[cols]
+    df_kr = df_kr[["순위"] + [c for c in df_kr.columns if c != "순위"]]
 if not df_us.empty:
-    cols = ["순위"] + [c for c in df_us.columns if c != "순위"]
-    df_us = df_us[cols]
+    df_us = df_us[["순위"] + [c for c in df_us.columns if c != "순위"]]
 
-# ✅ 3. 순위 기호(▲/▼)에 맞춰 텍스트 색상을 입히는 함수
+
 def style_rank(val):
     if isinstance(val, str):
-        if '▲' in val:
-            return 'color: #ef4444; font-weight: bold;'  # 상승: 빨간색
-        elif '▼' in val:
-            return 'color: #3b82f6; font-weight: bold;'  # 하락: 파란색
-    return 'color: #94a3b8;'  # 변동 없음: 회색
+        if "▲" in val:
+            return "color: #ef4444; font-weight: bold;"
+        elif "▼" in val:
+            return "color: #3b82f6; font-weight: bold;"
+    return "color: #94a3b8;"
 
-# DataFrame에 스타일 적용 (Pandas 버전에 따라 applymap 또는 map 사용)
-styled_df_kr = df_kr.style.map(style_rank, subset=['순위']) if not df_kr.empty else df_kr
-styled_df_us = df_us.style.map(style_rank, subset=['순위']) if not df_us.empty else df_us
 
-# ------------------------------------------------------------------------------
-# 렌더링 (탭 형태)
-# ------------------------------------------------------------------------------
-tab_kr, tab_us = st.tabs([f"🇰🇷 국내 시장 ({kr_badge})", f"🇺🇸 미국 시장 ({us_badge})"])
+styled_df_kr = (
+    df_kr.style.map(style_rank, subset=["순위"]) if not df_kr.empty else df_kr
+)
+styled_df_us = (
+    df_us.style.map(style_rank, subset=["순위"]) if not df_us.empty else df_us
+)
+
+tab_kr, tab_us = st.tabs([
+    f"🇰🇷 국내 시장 ({kr_badge})",
+    f"🇺🇸 미국 시장 ({us_badge})",
+])
 
 col_config = {
     "위험 지수": st.column_config.ProgressColumn(
@@ -745,24 +855,29 @@ col_config = {
 }
 
 with tab_kr:
-    st.markdown(f"#### 🇰🇷 국내 모니터링 순위표 `상태: {kr_badge}` (총 {len(df_kr)}개)")
+    st.markdown(
+        f"#### 🇰🇷 국내 모니터링 순위표 `상태: {kr_badge}` (총 {len(df_kr)}개)"
+    )
     st.dataframe(
-        styled_df_kr,  # <--- 이 부분 교체
+        styled_df_kr,
         column_config=col_config,
         use_container_width=True,
         hide_index=True,
-        height=360,
+        height=340,
     )
 
 with tab_us:
-    st.markdown(f"#### 🇺🇸 미국 모니터링 순위표 `상태: {us_badge}` (총 {len(df_us)}개)")
+    st.markdown(
+        f"#### 🇺🇸 미국 모니터링 순위표 `상태: {us_badge}` (총 {len(df_us)}개)"
+    )
     st.dataframe(
-        styled_df_us,  # <--- 이 부분 교체
+        styled_df_us,
         column_config=col_config,
         use_container_width=True,
         hide_index=True,
-        height=360,
+        height=340,
     )
+
 # ------------------------------------------------------------------------------
 # 8-2. 상세 종목 탭 렌더링
 # ------------------------------------------------------------------------------
@@ -771,44 +886,52 @@ st.markdown("### 🔍 상세 분석 대상 선택")
 
 rank_names = [d["asset_name"] for d in full_ranked]
 
-# 1. session_state에 최초 1회만 기본값 세팅
 if "detail_targets_selection" not in st.session_state:
-    st.session_state["detail_targets_selection"] = rank_names[:min(3, len(rank_names))]
+    st.session_state["detail_targets_selection"] = rank_names[
+        : min(3, len(rank_names))
+    ]
 
-# 2. default 인자를 빼고 key로 session_state 바인딩
 detail_targets = st.multiselect(
-    "상세 차트를 볼 종목을 선택하세요 (기본: 변동성 Top 3)",
+    "상세 차트와 행동 가이드를 볼 종목을 선택하세요 (기본: 상위 Top 3)",
     options=rank_names,
     key="detail_targets_selection",
-    max_selections=5
+    max_selections=5,
 )
 
 display_targets = [d for d in full_ranked if d["asset_name"] in detail_targets]
 
-# ✅ [추가] 선택된 종목이 하나도 없을 때 에러 방지
+# 선택 종목 전무 시 NameError 및 크래시 방지 방어 코드
 if not display_targets:
     st.warning("⚠️ 상세 차트를 확인할 종목을 최소 1개 이상 선택해 주세요.")
-    st.stop()  # 아래쪽 차트 렌더링 코드 실행을 즉시 멈춤
+    st.stop()
 
-if display_targets:
-    tabs = st.tabs([f"📌 {d['asset_name'].split(' (')[0]}" for d in display_targets])
+tabs = st.tabs([f"📌 {d['asset_name'].split(' (')[0]}" for d in display_targets])
 
-    for tab, data in zip(tabs, display_targets):
-        with tab:
-            asset_name = data["asset_name"]
-            target_info = data["target_info"]
-            SYMBOL = str(target_info["symbol"])
-            CURRENCY = str(target_info["currency"])
-            is_open = data["is_open"]
+for tab, data in zip(tabs, display_targets):
+    with tab:
+        asset_name = data["asset_name"]
+        target_info = data["target_info"]
+        SYMBOL = str(target_info["symbol"])
+        CURRENCY = str(target_info["currency"])
+        is_open = data["is_open"]
 
-            status_bg = "#ecfdf5" if is_open else "#fef2f2"
-            status_border = "#10b981" if is_open else "#ef4444"
-            status_text_color = "#065f46" if is_open else "#991b1b"
-            status_sub_color = "#047857" if is_open else "#b91c1c"
-            status_title = "🟢 [정규장 운영 중 - LIVE]" if is_open else "🔴 [정규장 마감 - CLOSED]"
-            status_sub = f"{target_info['market_name']} 실시간 체결" if is_open else f"{target_info['market_name']} 마감 데이터 고정"
+        status_bg = "#ecfdf5" if is_open else "#fef2f2"
+        status_border = "#10b981" if is_open else "#ef4444"
+        status_text_color = "#065f46" if is_open else "#991b1b"
+        status_sub_color = "#047857" if is_open else "#b91c1c"
+        status_title = (
+            "🟢 [정규장 운영 중 - LIVE]"
+            if is_open
+            else "🔴 [정규장 마감 - CLOSED]"
+        )
+        status_sub = (
+            f"{target_info['market_name']} 실시간 체결"
+            if is_open
+            else f"{target_info['market_name']} 마감 데이터 고정"
+        )
 
-            st.markdown(f"""
+        st.markdown(
+            f"""
             <div style="background-color: {status_bg}; border-left: 4px solid {status_border}; border-radius: 6px; padding: 10px 14px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; gap: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                 <div style="display: flex; align-items: center; flex-wrap: wrap; min-width: 0;">
                     <span style="font-size: 14px; font-weight: 700; color: {status_text_color};">{status_title}</span>
@@ -818,38 +941,81 @@ if display_targets:
                     {data['time_display_str']} &nbsp;|&nbsp; 운영: {data['hours_desc']}
                 </div>
             </div>
-            """, unsafe_allow_html=True)
+            """,
+            unsafe_allow_html=True,
+        )
 
-            current_price = data["current_price"]
-            risk_score = data["risk_score"]
-            pred_sigma_pct = data["pred_sigma_pct"]
-            rr_ratio = data["rr_ratio"]
-            risk_label = data["risk_label"]
+        current_price = data["current_price"]
+        risk_score = data["risk_score"]
+        pred_sigma_pct = data["pred_sigma_pct"]
+        rr_ratio = data["rr_ratio"]
+        risk_label = data["risk_label"]
 
-            delta_color = "inverse" if risk_score >= 65 else ("normal" if risk_score < 40 else "off")
+        delta_color = (
+            "inverse"
+            if risk_score >= 65
+            else ("normal" if risk_score < 40 else "off")
+        )
 
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("변동성 위험 지수", f"{risk_score:.1f}점", delta=risk_label, delta_color=delta_color)
-            c2.metric("1시간 예상 변동폭 (±1σ)", f"±{pred_sigma_pct * 100.0:.2f}%")
-            curr_price_str = f"{int(round(current_price)):,}원" if CURRENCY == "원" else f"${current_price:.2f}"
-            c3.metric("현재 체결가", curr_price_str)
-            c4.metric("기대 손익비 (Reward:Risk)", f"{rr_ratio:.2f} : 1",
-                      delta="균형" if 0.95 <= rr_ratio <= 1.05 else ("유리" if rr_ratio > 1.05 else "불리"))
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric(
+            "변동성 위험 지수",
+            f"{risk_score:.1f}점",
+            delta=risk_label,
+            delta_color=delta_color,
+        )
+        c2.metric("1시간 예상 변동폭 (±1σ)", f"±{pred_sigma_pct * 100.0:.2f}%")
+        curr_price_str = (
+            f"{int(round(current_price)):,}원"
+            if CURRENCY == "원"
+            else f"${current_price:.2f}"
+        )
+        c3.metric("현재 체결가", curr_price_str)
+        c4.metric(
+            "기대 손익비 (Reward:Risk)",
+            f"{rr_ratio:.2f} : 1",
+            delta=(
+                "균형"
+                if 0.95 <= rr_ratio <= 1.05
+                else ("유리" if rr_ratio > 1.05 else "불리")
+            ),
+        )
 
-            # 액션 플랜 카드
-            expected_upper = data["expected_upper"]
-            expected_lower = data["expected_lower"]
-            expected_range_value = data["expected_range_value"]
-            channel_pos = data["channel_pos"]
-            is_whipsaw_risk = data["is_whipsaw_risk"]
+        # ----------------------------------------------------------------------
+        # 5분봉 단타 액션 플랜 카드
+        # ----------------------------------------------------------------------
+        expected_upper = data["expected_upper"]
+        expected_lower = data["expected_lower"]
+        expected_range_value = data["expected_range_value"]
+        channel_pos = data["channel_pos"]
+        is_whipsaw_risk = data["is_whipsaw_risk"]
 
-            upper_str = f"{int(round(expected_upper)):,}원" if CURRENCY == "원" else f"${expected_upper:.2f}"
-            lower_str = f"{int(round(expected_lower)):,}원" if CURRENCY == "원" else f"${expected_lower:.2f}"
-            range_str = f"{int(round(expected_range_value)):,}원" if CURRENCY == "원" else f"${expected_range_value:.2f}"
-            whipsaw_badge = '<span style="color:#dc2626; font-weight:bold;">⚠️ 주의 (급반전 가능성 높음)</span>' if is_whipsaw_risk else '<span style="color:#059669; font-weight:bold;">✅ 양호 (추세 연속 안정)</span>'
+        upper_str = (
+            f"{int(round(expected_upper)):,}원"
+            if CURRENCY == "원"
+            else f"${expected_upper:.2f}"
+        )
+        lower_str = (
+            f"{int(round(expected_lower)):,}원"
+            if CURRENCY == "원"
+            else f"${expected_lower:.2f}"
+        )
+        range_str = (
+            f"{int(round(expected_range_value)):,}원"
+            if CURRENCY == "원"
+            else f"${expected_range_value:.2f}"
+        )
+        whipsaw_badge = (
+            '<span style="color:#dc2626; font-weight:bold;">⚠️ 주의 (급반전'
+            " 가능성 높음)</span>"
+            if is_whipsaw_risk
+            else '<span style="color:#059669; font-weight:bold;">✅ 양호 (추세'
+            " 연속 안정)</span>"
+        )
 
-            st.markdown(f"""
-            <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin: 12px 0 20px 0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+        st.markdown(
+            f"""
+            <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin: 12px 0 16px 0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 16px; flex-wrap: wrap;">
                     <div style="font-size: 16px; font-weight: 700; color: {data['strategy_color']};">{data['strategy_title']}</div>
                     <div style="font-size: 12px; color: #64748b;">휩소 리스크: {whipsaw_badge}</div>
@@ -879,160 +1045,199 @@ if display_targets:
                     </div>
                 </div>
                 <div style="font-size: 13px; color: #334155; line-height: 1.6; background-color: #f0fdf4; padding: 10px 14px; border-radius: 6px; border: 1px solid #dcfce3;">
-                    💡 <b>행동 가이드:</b> {data['strategy_desc']}
+                    ⚡ <b>초단타 행동 가이드:</b> {data['strategy_desc']}
                 </div>
             </div>
-            """, unsafe_allow_html=True)
+            """,
+            unsafe_allow_html=True,
+        )
 
-            from datetime import datetime, timedelta
-import plotly.graph_objects as go
-import streamlit as st
+        # ----------------------------------------------------------------------
+        # 60일 1시간봉 중장기 스윙 가이드 렌더링
+        # ----------------------------------------------------------------------
+        h_data = fetch_recent_1h_candles(SYMBOL)
+        macro = analyze_60d_macro_regime(h_data)
 
-# ------------------------------------------------------------------------------
-# 1. 타임라인 라벨 동적 자동 계산 (실제 시각 기준)
-# ------------------------------------------------------------------------------
-is_kr = target_info.get("currency", CURRENCY) == "원"
+        st.markdown(
+            f"""
+            <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 18px 20px; margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 12px; flex-wrap: wrap;">
+                    <div style="font-size: 15px; font-weight: 700; color: {macro['color']};">
+                        🧭 [60일 1H 스윙 가이드] {macro['title'].split('] ')[-1]}
+                    </div>
+                    <div style="font-size: 12px; color: #475569;">
+                        중기 추세 국면: <b>{macro['trend']}</b> | 추천 액션: <b>{macro['action']}</b>
+                    </div>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 11px; color: #64748b; margin-bottom: 4px;">
+                    <span>60일 최저점 지지</span>
+                    <span style="font-weight: 700; color: #0f172a;">60일 대역폭 내 위치: {macro['pos']:.1f}%</span>
+                    <span>60일 최고점 저항</span>
+                </div>
+                <div style="width: 100%; background-color: #e2e8f0; border-radius: 6px; height: 8px; overflow: hidden; margin-bottom: 12px;">
+                    <div style="width: {macro['pos']}%; background: linear-gradient(90deg, #10b981 0%, #0ea5e9 50%, #ef4444 100%); height: 100%;"></div>
+                </div>
+                <div style="font-size: 13px; color: #334155; line-height: 1.6; background-color: #ffffff; padding: 10px 14px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    📌 <b>스윙 운용 전략:</b> {macro['desc']}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-# [CASE A] 장 마감 상태 (직전 정규장 마감 시각 기준 역산)
-if not is_open:
-    # 국장 종가 15:30, 미장 종가 16:00 기준
-    close_h, close_m = (15, 30) if is_kr else (16, 0)
-    base_dt = datetime.now().replace(
-        hour=close_h, minute=close_m, second=0, microsecond=0
-    )
+        # ----------------------------------------------------------------------
+        # 인터랙티브 시계열 차트 (동적 타임라인 & 범주형 X축)
+        # ----------------------------------------------------------------------
+        is_kr_stock = target_info.get("currency", CURRENCY) == "원"
 
-    # 마감 시점 기준 과거 24개 5분봉 시각 계산 (13:35 ~ 15:30)
-    time_labels = [
-        (base_dt - timedelta(minutes=(23 - i) * 5)).strftime("%H:%M")
-        for i in range(24)
-    ]
-    last_time_label = time_labels[-1]  # '15:30'
+        if not is_open:
+            close_h, close_m = (15, 30) if is_kr_stock else (16, 0)
+            base_dt = datetime.now().replace(
+                hour=close_h, minute=close_m, second=0, microsecond=0
+            )
+            time_labels = [
+                (base_dt - timedelta(minutes=(23 - i) * 5)).strftime("%H:%M")
+                for i in range(24)
+            ]
+            last_time_label = time_labels[-1]
+            next_open_str = "익일 09:30" if is_kr_stock else "익일 10:00"
+            next_open_plus_str = "익일 10:00" if is_kr_stock else "익일 10:30"
+            future_labels = [
+                last_time_label,
+                f"{next_open_str} (예측)",
+                f"{next_open_plus_str} (예측)",
+            ]
+        else:
+            now = datetime.now()
+            base_dt = now.replace(
+                minute=(now.minute // 5) * 5, second=0, microsecond=0
+            )
+            time_labels = [
+                (base_dt - timedelta(minutes=(23 - i) * 5)).strftime("%H:%M")
+                for i in range(24)
+            ]
+            last_time_label = time_labels[-1]
+            future_labels = [
+                last_time_label,
+                (base_dt + timedelta(minutes=30)).strftime("%H:%M (예측)"),
+                (base_dt + timedelta(minutes=60)).strftime("%H:%M (예측)"),
+            ]
 
-    # 장 마감 후 예측 밴드는 익일 개장 기준 표기
-    next_open_str = "익일 09:30" if is_kr else "익일 10:00"
-    next_open_plus_str = "익일 10:00" if is_kr else "익일 10:30"
-    future_labels = [
-        last_time_label,
-        f"{next_open_str} (예측)",
-        f"{next_open_plus_str} (예측)",
-    ]
+        prices = data["prices"]
+        drift_val = data["drift_val"]
 
-# [CASE B] 장 중 실시간 상태 (현재 시각 기준 5분 단위 역산)
-else:
-    now = datetime.now()
-    # 현재 분을 5분 단위로 버림 정렬
-    base_dt = now.replace(
-        minute=(now.minute // 5) * 5, second=0, microsecond=0
-    )
+        future_upper = [
+            current_price,
+            float(
+                current_price
+                + (drift_val * 0.5)
+                + (expected_range_value * 0.7)
+            ),
+            expected_upper,
+        ]
+        future_lower = [
+            current_price,
+            float(
+                current_price
+                + (drift_val * 0.5)
+                - (expected_range_value * 0.7)
+            ),
+            expected_lower,
+        ]
 
-    time_labels = [
-        (base_dt - timedelta(minutes=(23 - i) * 5)).strftime("%H:%M")
-        for i in range(24)
-    ]
-    last_time_label = time_labels[-1]
+        fig = go.Figure()
+        fig.add_trace(
+            go.Scatter(
+                x=time_labels,
+                y=prices,
+                mode="lines+markers",
+                name="실제 체결가",
+                line=dict(color="#0ea5e9", width=2.5),
+                marker=dict(size=6, color="#0284c7"),
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=future_labels,
+                y=future_lower,
+                mode="lines",
+                name="예상 하한 (-1σ)",
+                line=dict(color="rgba(16,185,129,0.8)", width=1.5, dash="dot"),
+                showlegend=True,
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=future_labels,
+                y=future_upper,
+                mode="lines",
+                name="예상 상한 (+1σ)",
+                line=dict(color="rgba(239,68,68,0.8)", width=1.5, dash="dot"),
+                fill="tonexty",
+                fillcolor="rgba(14,165,233,0.1)",
+            )
+        )
+        fig.add_shape(
+            type="line",
+            x0=last_time_label,
+            x1=last_time_label,
+            y0=0,
+            y1=1,
+            yref="paper",
+            line=dict(color="#94a3b8", width=1.5, dash="dash"),
+        )
 
-    future_labels = [
-        last_time_label,
-        (base_dt + timedelta(minutes=30)).strftime("%H:%M (예측)"),
-        (base_dt + timedelta(minutes=60)).strftime("%H:%M (예측)"),
-    ]
+        selected_past_ticks = [
+            time_labels[idx] for idx in [0, 4, 8, 12, 16, 20, 23]
+        ]
+        custom_ticks = selected_past_ticks + future_labels[1:]
+        status_text = "실시간" if is_open else "직전 마감 기준"
 
-# ------------------------------------------------------------------------------
-# 2. 가격 데이터 및 차트 생성
-# ------------------------------------------------------------------------------
-prices = data["prices"]
-drift_val = data["drift_val"]
+        fig.update_layout(
+            title=dict(
+                text=f"{asset_name} - 2시간 궤적 & 1시간 예측 밴드 ({status_text})",
+                font=dict(size=15, color="#1e293b"),
+            ),
+            xaxis=dict(
+                title="타임라인",
+                type="category",
+                tickmode="array",
+                tickvals=custom_ticks,
+                gridcolor="#f1f5f9",
+            ),
+            yaxis=dict(title=f"가격 ({CURRENCY})", gridcolor="#f1f5f9"),
+            plot_bgcolor="#ffffff",
+            paper_bgcolor="rgba(0,0,0,0)",
+            template="plotly_white",
+            height=420,
+            margin=dict(l=15, r=15, t=50, b=15),
+            hovermode="x unified",
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
-future_upper = [
-    current_price,
-    float(current_price + (drift_val * 0.5) + (expected_range_value * 0.7)),
-    expected_upper,
-]
-future_lower = [
-    current_price,
-    float(current_price + (drift_val * 0.5) - (expected_range_value * 0.7)),
-    expected_lower,
-]
+        trading_h = float(target_info.get("trading_hours", 6.5))
+        daily_scale = trading_h / 2.0
+        annualized_vol = float(
+            np.sqrt(max(data["pred_rv"], 0.0) * daily_scale * 252.0) * 100.0
+        )
 
-fig = go.Figure()
-
-# 실제 체결가
-fig.add_trace(
-    go.Scatter(
-        x=time_labels,
-        y=prices,
-        mode="lines+markers",
-        name="실제 체결가",
-        line=dict(color="#0ea5e9", width=2.5),
-        marker=dict(size=6, color="#0284c7"),
-    )
-)
-
-# 예상 하한선 (-1σ)
-fig.add_trace(
-    go.Scatter(
-        x=future_labels,
-        y=future_lower,
-        mode="lines",
-        name="예상 하한 (-1σ)",
-        line=dict(color="rgba(16,185,129,0.8)", width=1.5, dash="dot"),
-        showlegend=True,
-    )
-)
-
-# 예상 상한선 (+1σ) & 밴드 영역 채우기
-fig.add_trace(
-    go.Scatter(
-        x=future_labels,
-        y=future_upper,
-        mode="lines",
-        name="예상 상한 (+1σ)",
-        line=dict(color="rgba(239,68,68,0.8)", width=1.5, dash="dot"),
-        fill="tonexty",
-        fillcolor="rgba(14,165,233,0.1)",
-    )
-)
-
-# 기준 구분선 (실시간/마감 분기점)
-fig.add_shape(
-    type="line",
-    x0=last_time_label,
-    x1=last_time_label,
-    y0=0,
-    y1=1,
-    yref="paper",
-    line=dict(color="#94a3b8", width=1.5, dash="dash"),
-)
-
-# ------------------------------------------------------------------------------
-# 3. X축 눈금(Ticks) 및 레이아웃
-# ------------------------------------------------------------------------------
-# 4칸 간격(20분 주기)으로 라벨 추출
-selected_past_ticks = [
-    time_labels[idx] for idx in [0, 4, 8, 12, 16, 20, 23]
-]
-custom_ticks = selected_past_ticks + future_labels[1:]
-status_text = "실시간" if is_open else "직전 마감 기준"
-
-fig.update_layout(
-    title=dict(
-        text=f"{asset_name} - 2시간 궤적 & 1시간 예측 밴드 ({status_text})",
-        font=dict(size=15, color="#1e293b"),
-    ),
-    xaxis=dict(
-        title="타임라인",
-        type="category",  # 범주형으로 설정하여 불필요한 공백 제거
-        tickmode="array",
-        tickvals=custom_ticks,
-        gridcolor="#f1f5f9",
-    ),
-    yaxis=dict(title=f"가격 ({CURRENCY})", gridcolor="#f1f5f9"),
-    plot_bgcolor="#ffffff",
-    paper_bgcolor="rgba(0,0,0,0)",
-    template="plotly_white",
-    height=420,
-    margin=dict(l=15, r=15, t=50, b=15),
-    hovermode="x unified",
-)
-
-st.plotly_chart(fig, use_container_width=True)
+        with st.expander(f"{asset_name} 모형 상태 및 FPCA 특징치"):
+            st.write(
+                f"- **현재 2시간 관측 실현 변동성 ($\\ln RV_t$):**"
+                f" `{data['in_rv']:.4f}`"
+            )
+            st.write(
+                f"- **예측 1시간 선행 RV ($\\ln \\widehat{{RV}}_{{t+1}}$):**"
+                f" `{data['adjusted_log_rv']:.4f}` (연환산 변동성:"
+                f" `{annualized_vol:.2f}%`)"
+            )
+            st.write(
+                f"- **동적 레벨 보정치 (Local Offset):**"
+                f" `{data['dynamic_asset_offset']:+.4f}`"
+            )
+            st.write(
+                "- **FPCA 주성분 계수 (1~3):**"
+                f" `{float(data['fpc_scores'][0]):.4f},"
+                f" {float(data['fpc_scores'][1]):.4f},"
+                f" {float(data['fpc_scores'][2]):.4f}`"
+            )
