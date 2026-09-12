@@ -1602,7 +1602,7 @@ for tab, data in zip(tabs, display_targets):
                 h_data,
                 current_price,
                 trading_hours=trading_h,
-                ticker_name=ticker,  # 👈 현재 순회 중인 종목 변수명 (ticker 등)
+                ticker_name=asset_name,  
             )
 
             if macro is not None:
