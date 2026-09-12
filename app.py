@@ -1091,6 +1091,7 @@ def process_single_asset(asset_name, target_info):
                 position = None
                 entry_price = 0.0
                 holding_period = 0
+                time_over_count = 0  # 1. 시간 초과 청산 카운터 추가
 
                 # 15번째 봉부터 시뮬레이션
                 for i in range(15, len(h_prices)):
@@ -1116,8 +1117,16 @@ def process_single_asset(asset_name, target_info):
                         is_timeout = holding_period >= max_holding_bars
 
                         if is_tp or is_sl or is_spike or is_timeout:
+                            # 2. 시간 초과 발생 여부 로깅 및 카운트
+                            if is_timeout:
+                                time_over_count += 1
+                                print(f"[{symbol} | {i}번째 봉] 시간 초과 청산 발생! 수익률: {current_pnl*100:+.2f}%")
+
                             trade_returns.append(float(current_pnl))
                             position = None
+
+                # 3. 시뮬레이션 완료 후 시간 초과 총 발생 횟수 출력
+                print(f"[{symbol}] 총 매매 {len(trade_returns)}회 중 시간 초과 청산 횟수: {time_over_count}회")
 
                 if position == "LONG":
                     trade_returns.append(float((h_prices[-1] - entry_price) / entry_price))
