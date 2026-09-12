@@ -18,6 +18,9 @@ import yfinance as yf
 if "closed_asset_cache" not in st.session_state:
     st.session_state["closed_asset_cache"] = {}
 
+if "h_data_cache" not in st.session_state:
+    st.session_state["h_data_cache"] = {}
+
 # ==============================================================================
 # 1. 페이지 레이아웃 및 자동 새로고침 설정
 # ==============================================================================
@@ -158,7 +161,6 @@ TICKER_MAP = {
 # 3. 장 상태 판별 함수
 # ==============================================================================
 def check_market_status():
-    # 1. 한국 시장 (KST 평일 09:00 ~ 15:30)
     kst = pytz.timezone("Asia/Seoul")
     now_kr = datetime.now(kst)
     is_kr_weekday = now_kr.weekday() < 5
@@ -169,7 +171,6 @@ def check_market_status():
     )
     kr_open = is_kr_weekday and is_kr_time
 
-    # 2. 미국 시장 (EST/EDT 평일 09:30 ~ 16:00, 서머타임 자동 계산)
     est = pytz.timezone("America/New_York")
     now_us = datetime.now(est)
     is_us_weekday = now_us.weekday() < 5
@@ -182,7 +183,6 @@ def check_market_status():
 
     return kr_open, us_open
 
-
 def get_single_market_status_text(target_tz_str: str, is_kr: bool):
     kst = pytz.timezone("Asia/Seoul")
     now_kst = datetime.now(kst)
@@ -194,26 +194,16 @@ def get_single_market_status_text(target_tz_str: str, is_kr: bool):
     is_weekend = weekday >= 5
 
     if is_kr:
-        is_open = (
-            not is_weekend and time(9, 0) <= now_target.time() <= time(15, 30)
-        )
+        is_open = not is_weekend and time(9, 0) <= now_target.time() <= time(15, 30)
         hours_str = "09:00 ~ 15:30 KST"
-        time_display_str = (
-            f"한국: <b>{now_kst.strftime('%Y-%m-%d %H:%M:%S')} KST</b>"
-        )
+        time_display_str = f"한국: <b>{now_kst.strftime('%Y-%m-%d %H:%M:%S')} KST</b>"
     else:
-        is_open = (
-            not is_weekend and time(9, 30) <= now_target.time() <= time(16, 0)
-        )
+        is_open = not is_weekend and time(9, 30) <= now_target.time() <= time(16, 0)
         tz_abbr = now_target.strftime("%Z")
         hours_str = f"현지 09:30 ~ 16:00 {tz_abbr}"
-        time_display_str = (
-            f"현지: <b>{now_target.strftime('%m-%d %H:%M:%S')} {tz_abbr}</b> "
-            f"(한국: {now_kst.strftime('%H:%M:%S')} KST)"
-        )
+        time_display_str = f"현지: <b>{now_target.strftime('%m-%d %H:%M:%S')} {tz_abbr}</b>"
 
     return is_open, time_display_str, hours_str
-
 
 # ==============================================================================
 # 4. 모델 로드
@@ -221,7 +211,6 @@ def get_single_market_status_text(target_tz_str: str, is_kr: bool):
 @st.cache_resource
 def load_model():
     return joblib.load("model_artifacts.pkl")
-
 
 try:
     artifacts = load_model()
@@ -236,16 +225,13 @@ except Exception as e:
     st.stop()
 
 # ==============================================================================
-# 5. 데이터 수집 함수 (5분봉 & 60일 1시간봉)
+# 5. 데이터 수집 함수
 # ==============================================================================
 @st.cache_data(ttl=60)
 def fetch_recent_5m_candles(symbol: str, is_kr: bool, naver_symbol: str = ""):
-    # 1) yfinance
     try:
         session = requests.Session()
-        session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        })
+        session.headers.update({"User-Agent": "Mozilla/5.0"})
         ticker = yf.Ticker(symbol, session=session)
         df_yf = ticker.history(period="5d", interval="5m", prepost=True)
         if df_yf is not None and not df_yf.empty and "Close" in df_yf.columns:
@@ -255,42 +241,12 @@ def fetch_recent_5m_candles(symbol: str, is_kr: bool, naver_symbol: str = ""):
     except Exception:
         pass
 
-    # 2) 야후 파이낸스 직접 호출 (미장용)
-    if not is_kr:
-        try:
-            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=5m&range=5d&includePrePost=true"
-            res = requests.get(
-                url, headers={"User-Agent": "Mozilla/5.0"}, timeout=6
-            )
-            if res.status_code == 200:
-                data = res.json()
-                result = data.get("chart", {}).get("result", [])
-                if result:
-                    indicators = (
-                        result[0].get("indicators", {}).get("quote", [{}])[0]
-                    )
-                    closes = indicators.get("close", [])
-                    clean_closes = [c for c in closes if c is not None]
-                    if len(clean_closes) >= 24:
-                        return np.array(clean_closes[-24:], dtype=float)
-        except Exception:
-            pass
-
-    # 3) 네이버 증권 API (국장용)
     if is_kr and naver_symbol:
         try:
             url = f"https://fchart.stock.naver.com/sise.nhn?symbol={naver_symbol}&timeframe=minute&count=120&requestType=0"
-            res = requests.get(
-                url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5
-            )
-            res.raise_for_status()
+            res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
             root = ET.fromstring(res.text)
-            items = root.findall(".//item")
-            close_prices = []
-            for item in items:
-                parts = item.attrib.get("data", "").split("|")
-                if len(parts) >= 5:
-                    close_prices.append(float(parts[4]))
+            close_prices = [float(item.attrib.get("data", "").split("|")[4]) for item in root.findall(".//item") if len(item.attrib.get("data", "").split("|")) >= 5]
             if len(close_prices) >= 24:
                 return np.array(close_prices[-24:], dtype=float)
         except Exception:
@@ -298,16 +254,11 @@ def fetch_recent_5m_candles(symbol: str, is_kr: bool, naver_symbol: str = ""):
 
     raise ValueError(f"{symbol} 5분봉 데이터 수집 실패")
 
-
 @st.cache_data(ttl=300)
 def fetch_recent_1h_candles(symbol: str):
     try:
         session = requests.Session()
-        session.headers.update({
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            )
-        })
+        session.headers.update({"User-Agent": "Mozilla/5.0"})
         ticker = yf.Ticker(symbol, session=session)
         df_1h = ticker.history(period="60d", interval="1h")
         if df_1h is not None and not df_1h.empty and "Close" in df_1h.columns:
@@ -317,9 +268,7 @@ def fetch_recent_1h_candles(symbol: str):
                     "close": df_clean["Close"].values.astype(float),
                     "high": df_clean["High"].values.astype(float),
                     "low": df_clean["Low"].values.astype(float),
-                    "times": [
-                        t.strftime("%m/%d %H:%M") for t in df_clean.index
-                    ],
+                    "times": [t.strftime("%m/%d %H:%M") for t in df_clean.index],
                 }
     except Exception:
         pass
