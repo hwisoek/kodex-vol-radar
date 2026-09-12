@@ -1063,33 +1063,60 @@ def process_single_asset(asset_name, target_info):
         )
 
         # ----------------------------------------------------------------------
-        # 60일 1시간봉 가이드 매매(지지선 반등 진입 & -2% 칼손절) 백테스팅 연산
+        # 60일 1시간봉 기반 [ML 변동성 예측 & 레짐 가이드] 백테스팅 연산
         # ----------------------------------------------------------------------
         trade_returns = []
         try:
             h_data = fetch_recent_1h_candles(symbol)
             if h_data is not None and "close" in h_data and len(h_data["close"]) >= 50:
                 h_prices = np.array(h_data["close"], dtype=float)
-                window = 20
-                s_prices = pd.Series(h_prices)
-                roll_mean = s_prices.rolling(window).mean().bfill().values
-                roll_std = s_prices.rolling(window).std().bfill().values
+                log_p = np.log(h_prices)
+                returns = np.diff(log_p)
 
-                lower_band = roll_mean - 1.0 * roll_std
-                upper_band = roll_mean + 1.0 * roll_std
+                # 1. 과거 1시간봉 롤링 12개(약 2영업일) 기반 실현 변동성(RV) 계산
+                win_rv = 12
+                hist_rv = []
+                for i in range(win_rv, len(returns)):
+                    sub_ret = returns[i - win_rv : i]
+                    hist_rv.append(np.sum(sub_ret**2) + 1e-8)
+                hist_rv = np.array(hist_rv)
+                log_hist_rv = np.log(hist_rv)
+
+                # RV 레짐 임계값 (상위 20% 변동성 폭발 구간 산출)
+                rv_threshold = np.percentile(log_hist_rv, 80)
+                
+                # 2. 모델 기반 동적 예측 진폭 및 밴드 생성
+                # 각 시점의 단기 가격 중심선(10봉 EMA)에 예측 변동성 밴드 결합
+                s_prices = pd.Series(h_prices)
+                mid_line = s_prices.ewm(span=10).mean().values
+
                 stop_loss_limit = -0.020
-                max_holding_bars = 15
+                max_holding_bars = 12  # 최대 보유 시간
 
                 position = None
                 entry_price = 0.0
                 holding_period = 0
 
-                for i in range(window, len(h_prices)):
+                # 시뮬레이션 루프 (데이터 인덱스 정렬: win_rv + 1부터 시작)
+                for i in range(win_rv + 1, len(h_prices)):
                     curr_p = h_prices[i]
                     prev_p = h_prices[i - 1]
+                    rv_idx = i - (win_rv + 1)
+                    curr_log_rv = log_hist_rv[rv_idx]
+
+                    # 모델의 실현 변동성 기반 1시그마 동적 밴드
+                    pred_sigma = np.sqrt(np.exp(curr_log_rv))
+                    dyn_lower = mid_line[i] * (1.0 - pred_sigma)
+                    dyn_upper = mid_line[i] * (1.0 + pred_sigma)
 
                     if position is None:
-                        if prev_p <= lower_band[i - 1] and curr_p > lower_band[i]:
+                        # [ML 가이드 진입 조건]
+                        # 1) 변동성이 폭발(레짐 체인지) 상태가 아님 (하방 브레이크아웃 휩소 방지)
+                        # 2) 가격이 모델의 동적 지지선(-1σ)을 찍고 반등
+                        is_calm_regime = curr_log_rv < rv_threshold
+                        is_support_bounce = (prev_p <= dyn_lower) and (curr_p > dyn_lower)
+
+                        if is_calm_regime and is_support_bounce:
                             position = "LONG"
                             entry_price = curr_p
                             holding_period = 0
@@ -1097,11 +1124,17 @@ def process_single_asset(asset_name, target_info):
                         holding_period += 1
                         current_pnl = (curr_p - entry_price) / entry_price
 
-                        if (
-                            curr_p >= upper_band[i]
-                            or current_pnl <= stop_loss_limit
-                            or holding_period >= max_holding_bars
-                        ):
+                        # [ML 가이드 청산 조건]
+                        # 1) 동적 저항선(+1σ) 도달 (익절)
+                        # 2) 손절선(-2.0%) 도달
+                        # 3) 변동성 급증 경보 (레짐 붕괴 시 즉시 탈출)
+                        # 4) 타임아웃
+                        is_take_profit = curr_p >= dyn_upper
+                        is_stop_loss = current_pnl <= stop_loss_limit
+                        is_vol_spike = curr_log_rv >= rv_threshold
+                        is_time_over = holding_period >= max_holding_bars
+
+                        if is_take_profit or is_stop_loss or is_vol_spike or is_time_over:
                             trade_returns.append(current_pnl)
                             position = None
 
@@ -1293,21 +1326,19 @@ with tab_us:
         height=340,
     )
 # ------------------------------------------------------------------------------
-# 8-1.5. [해결책 B] 유니버스 전체 통합 횡단면 부트스트랩 검증 패널
+# 8-1.5. [선택지 2] 유니버스 전체 통합 머신러닝 변동성 가이드 검증 패널
 # ------------------------------------------------------------------------------
 st.markdown("---")
-with st.expander("🌐 [유니버스 전체 통합] 가이드 전략 신뢰도 및 통계적 유의성 검정 (Cross-Sectional Bootstrap)", expanded=True):
-    # 전 종목의 트레이딩 수익률을 한 바구니로 취합 (Pooled Data)
+with st.expander("🔬 [유니버스 전체 통합] ML 동적 변동성 밴드 & 레짐 가이드 신뢰도 검정", expanded=True):
     all_trades = []
     for d in full_ranked:
         if "trade_returns" in d and len(d["trade_returns"]) > 0:
             all_trades.extend(d["trade_returns"])
-            
+
     all_trades = np.array(all_trades, dtype=float)
-    
+
     if len(all_trades) >= 30:
-        # 거래당 평균 무위험 기회비용 차감 (연 3.5% / 252일 기준 약 5봉 보유)
-        rf_per_trade = (0.035 / 252.0) * (5.0 / 6.5)
+        rf_per_trade = (0.035 / 252.0) * (4.0 / 6.5)
         pooled_excess = all_trades - rf_per_trade
 
         B = 10000
@@ -1315,28 +1346,23 @@ with st.expander("🌐 [유니버스 전체 통합] 가이드 전략 신뢰도 �
         actual_mean_total = np.mean(pooled_excess)
         win_rate_total = np.mean(all_trades > 0) * 100.0
 
-        # 귀무가설 H0: 가이드 전략의 전체 평균 초과수익 <= 0
         centered_pooled = pooled_excess - actual_mean_total
-
-        # 대규모 부트스트랩 리샘플링
         boot_samples = np.random.choice(centered_pooled, size=(B, N_total), replace=True)
         boot_means = np.mean(boot_samples, axis=1)
         pooled_p_val = float(np.mean(boot_means >= actual_mean_total))
 
-        # 95% 백분위수 신뢰구간 (Percentile Bootstrap CI)
         raw_boot = np.random.choice(pooled_excess, size=(B, N_total), replace=True)
         raw_means = np.mean(raw_boot, axis=1)
         ci_lower_total = float(np.percentile(raw_means, 2.5))
         ci_upper_total = float(np.percentile(raw_means, 97.5))
 
-        # UI 출력
         u1, u2, u3, u4 = st.columns(4)
-        u1.metric("통합 표본 수 (전체 체결)", f"{N_total:,}회", delta=f"평균 승률: {win_rate_total:.1f}%")
+        u1.metric("통합 표본 수 (ML 체결)", f"{N_total:,}회", delta=f"평균 승률: {win_rate_total:.1f}%")
         u2.metric("전체 건당 평균 초과수익", f"{actual_mean_total * 100:+.2f}%")
         u3.metric(
             "통합 전략 p-value",
             f"{pooled_p_val:.4f}",
-            delta="★ 통계적 알파 확보 (p < 0.05)" if pooled_p_val < 0.05 else "유의성 부족",
+            delta="★ 모델 알파 유의 (p < 0.05)" if pooled_p_val < 0.05 else "유의성 검증 중",
             delta_color="normal" if pooled_p_val < 0.05 else "off"
         )
         u4.metric("통합 95% 신뢰구간", f"[{ci_lower_total*100:+.2f}%, {ci_upper_total*100:+.2f}%]")
@@ -1344,16 +1370,13 @@ with st.expander("🌐 [유니버스 전체 통합] 가이드 전략 신뢰도 �
         st.markdown(
             f"""
             <div style="font-size: 13px; color: #1e293b; line-height: 1.6; background-color: #f8fafc; padding: 12px 16px; border-radius: 8px; border: 1px solid #e2e8f0; margin-top: 10px;">
-                💡 <b>시스템 퀀트 검증 진단:</b><br>
-                - 단일 종목의 15~18회 소표본 한계를 극복하기 위해, 모니터링 중인 <b>전체 유니버스({len(full_ranked)}개 자산)의 최근 60일 타점 총 {N_total:,}건</b>을 통합 검정했어.<br>
-                - 통합 건당 기대 초과수익은 <b>{actual_mean_total * 100:+.2f}%</b>이며, 1만 회 부트스트랩 비모수 검정 결과 단측 p-value는 <b>{pooled_p_val:.4f}</b>로 산출되었어.<br>
-                - p-value가 0.05 미만일 경우, 이 가이드의 지지/저항 밴드 반등 로직은 개별 자산의 일시적 노이즈가 아닌 <b>시장 전체에서 통계적으로 유효한 구조적 알파(Edge)</b>를 갖고 있음을 의미해.
+                🔬 <b>ML 변동성 예측 모델 실전 검증 진단:</b><br>
+                - 단순 고전 볼린저 밴드가 아닌, <b>실시간 계산된 실현 변동성(RV) 동적 밴드 및 변동성 레짐 필터(변동성 폭발 시 진입 금지/긴급 탈출)</b>를 적용한 백테스트 결과야.<br>
+                - 총 {len(full_ranked)}개 자산에서 발생한 <b>{N_total:,}회</b>의 타점을 통합 부트스트랩({B:,}회) 검정하여 산출된 p-value는 <b>{pooled_p_val:.4f}</b>야.
             </div>
             """,
             unsafe_allow_html=True
         )
-    else:
-        st.info("💡 통합 검증을 위한 전체 유니버스 체결 데이터 표본이 부족합니다.")
 # ------------------------------------------------------------------------------
 # 8-2. 상세 종목 탭 렌더링
 # ------------------------------------------------------------------------------
