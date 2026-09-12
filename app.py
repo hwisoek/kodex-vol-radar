@@ -603,6 +603,11 @@ detail_targets = st.multiselect(
 
 display_targets = [d for d in full_ranked if d["asset_name"] in detail_targets]
 
+# ✅ [추가] 선택된 종목이 하나도 없을 때 에러 방지
+if not display_targets:
+    st.warning("⚠️ 상세 차트를 확인할 종목을 최소 1개 이상 선택해 주세요.")
+    st.stop()  # 아래쪽 차트 렌더링 코드 실행을 즉시 멈춤
+
 if display_targets:
     tabs = st.tabs([f"📌 {d['asset_name'].split(' (')[0]}" for d in display_targets])
 
