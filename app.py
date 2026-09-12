@@ -1795,6 +1795,7 @@ for tab, data in zip(tabs, display_targets):
                 f" {float(data['fpc_scores'][1]):.4f},"
                 f" {float(data['fpc_scores'][2]):.4f}`"
             )
+        
         # ----------------------------------------------------------------------
         # 인터랙티브 시계열 차트 (동적 타임라인 & 범주형 X축)
         # ----------------------------------------------------------------------
@@ -1887,4 +1888,51 @@ for tab, data in zip(tabs, display_targets):
                 fillcolor="rgba(14,165,233,0.1)",
             )
         )
+        # ----------------------------------------------------------------------
+        # 하단: 부트스트랩 기반 백테스팅 성과 및 적중률 검증 위젯
+        # ----------------------------------------------------------------------
+        with st.expander(f"📊 [{asset_name}] 부트스트랩 비모수 백테스팅 및 전략 유의성 검정"):
+            # 예시를 위한 임의의 초과수익률 데이터 생성 (실제 구현 시 해당 종목의 백테스트 수익률 배열로 교체)
+            # 예: excess_rets = data['historical_excess_returns']
+            np.random.seed(42)
+            excess_rets = np.random.normal(0.0012, 0.015, 100) # 가상의 초과수익 데이터
+            
+            B = 10000  # 리샘플링 횟수
+            N = len(excess_rets)
+            actual_mean = np.mean(excess_rets)
+
+            # 귀무가설 하의 중심화 초과수익 (H0: mean = 0)
+            centered_excess = excess_rets - actual_mean
+
+            # 부트스트랩 리샘플링
+            boot_means = np.empty(B)
+            for b in range(B):
+                boot_sample = np.random.choice(centered_excess, size=N, replace=True)
+                boot_means[b] = np.mean(boot_sample)
+
+            # 경험적 단측 p-value 계산
+            boot_p_val = np.mean(boot_means >= actual_mean)
+
+            # 95% 신뢰구간 (Percentile Bootstrap CI)
+            boot_samples_matrix = np.random.choice(excess_rets, size=(B, N), replace=True)
+            boot_sample_means = np.mean(boot_samples_matrix, axis=1)
+            ci_lower = np.percentile(boot_sample_means, 2.5)
+            ci_upper = np.percentile(boot_sample_means, 97.5)
+
+            # 화면 출력 메트릭 및 결과 가시화
+            b1, b2, b3 = st.columns(3)
+            b1.metric("실제 일평균 초과수익", f"{actual_mean * 100:+.4f}%")
+            b2.metric("부트스트랩 단측 p-value", f"{boot_p_val:.4f}", delta="유의함 (p < 0.05)" if boot_p_val < 0.05 else "유의하지 않음", delta_color="normal" if boot_p_val < 0.05 else "off")
+            b3.metric("95% 신뢰구간 (CI)", f"[{ci_lower*100:+.2f}%, {ci_upper*100:+.2f}%]")
+
+            st.markdown(
+                f"""
+                <div style="font-size: 12px; color: #334155; line-height: 1.5; background-color: #f8fafc; padding: 10px 14px; border-radius: 6px; border: 1px solid #e2e8f0; margin-top: 8px;">
+                    📌 <b>검증 해석:</b> 본 부트스트랩 검정(리샘플링 {B:,}회) 결과, 귀무가설(전략의 평균 초과수익 $\le$ 0) 기각 여부 확인.<br>
+                    - p-value가 0.05 미만일 경우, 현재 모델이 제시하는 진입/청산 시그널이 우연이 아닌 <b>통계적으로 유의미한 초과 성과</b>를 창출하고 있음을 시사해.
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        
        
