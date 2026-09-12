@@ -1179,20 +1179,29 @@ def process_single_asset(asset_name, target_info, cached_data=None):
         return None
 
 # ==============================================================================
-# 8. 메인 렌더링 & 병렬 계산
+# 8. 메인 렌더링 & 병렬 계산 (국장/미장 전체 장 상태 기반 최적화)
 # ==============================================================================
 st.markdown("## 🎯 글로벌 실시간 변동성 스캐너 & 멀티 프레임 레이더")
 
+# 💡 [핵심] 국장과 미장 전체 시장의 열림/닫힘 여부를 루프 돌기 전에 한 번만 딱 판별!
+kr_open, us_open = check_market_status()
+
 all_calculated = []
-with st.spinner("종목별 변동성 데이터를 병렬 스캔 중..."):
+scan_msg = "종목별 변동성 데이터를 병렬 스캔 중..."
+if not kr_open and not us_open:
+    scan_msg = "모든 시장 마감 상태 — 캐시된 데이터를 불러오는 중..."
+
+with st.spinner(scan_msg):
     with ThreadPoolExecutor(max_workers=8) as executor:
         futures = {}
         for name, info in TICKER_MAP.items():
-            # 🛑 [핵심] 메인 스레드에서 안전하게 캐시 상태를 미리 확인
-            is_open_check, _, _ = get_single_market_status_text(info["tz"], info["is_kr"])
-            cached_item = None
+            # 해당 종목이 속한 시장(국장 vs 미장)이 열려 있는지 확인
+            is_kr_market = info["is_kr"]
+            market_is_open = kr_open if is_kr_market else us_open
             
-            if not is_open_check and name in st.session_state["closed_asset_cache"]:
+            cached_item = None
+            # 🛑 시장이 닫혀 있고 이미 캐시가 존재한다면 API 호출 및 연산 완전 스킵!
+            if not market_is_open and name in st.session_state["closed_asset_cache"]:
                 cached_item = st.session_state["closed_asset_cache"][name]
 
             # 워커에 안전한 값 전달
@@ -1202,8 +1211,10 @@ with st.spinner("종목별 변동성 데이터를 병렬 스캔 중..."):
             res = f.result()
             if res is not None:
                 all_calculated.append(res)
-                # 장이 닫혀 있다면 캐시에 결과 저장
-                if not res["is_open"]:
+                # 장이 닫힌 시장의 종목이라면 캐시에 안전하게 백업
+                is_kr_market = res["target_info"]["is_kr"]
+                market_is_open = kr_open if is_kr_market else us_open
+                if not market_is_open:
                     st.session_state["closed_asset_cache"][res["asset_name"]] = res
 
 if not all_calculated:
