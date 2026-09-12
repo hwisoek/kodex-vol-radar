@@ -2107,43 +2107,56 @@ for tab, data in zip(tabs, display_targets):
                 lower_band = roll_mean - 1.0 * roll_std  # 지지선 (매수 후보선)
                 upper_band = roll_mean + 1.0 * roll_std  # 저항선 (익절 목표선)
 
-                # 2. 리스크 관리(손절선)를 포함한 매매 시뮬레이션
-                # 진입: 지지선 하향 이탈 후 복귀(반등)
-                # 청산: 저항선 도달(익절) OR -2.0% 하락(손절) OR 15봉 초과 보유
-                stop_loss_limit = -0.020  # -2.0% 손절 기준
-                max_holding_bars = 60
+                # 2. 리스크 관리(손절선) 및 3단 정밀 필터 시뮬레이션
+                # 중기 거시 추세선 (EMA 40)
+                ema_macro = s_prices.ewm(span=40).mean().values
+
+                stop_loss_limit = -0.015  # -1.5% 손절 기준
+                max_holding_bars = 40     # 40봉 타임아웃 단축
 
                 trade_returns = []
                 position = None
                 entry_price = 0.0
                 holding_period = 0
 
-                for i in range(window, len(h_prices)):
+                # EMA 40 안정화 이후(40번째 봉부터) 시뮬레이션
+                for i in range(40, len(h_prices)):
                     curr_p = h_prices[i]
                     prev_p = h_prices[i - 1]
+                    curr_sigma = pred_sigmas[i]
 
                     if position is None:
-                        if prev_p <= lower_band[i - 1] and curr_p > lower_band[i]:
+                        is_calm = curr_sigma < rv_threshold
+
+                        # 직전 봉 하단 이탈/터치 여부
+                        touched_lower = prev_p <= dyn_lower[i - 1]
+
+                        # [필터 1] 양봉 반등 컨펌
+                        is_bullish_bounce = (curr_p > prev_p) and (curr_p > dyn_lower[i])
+
+                        # [필터 2] 대세 하락장 역추세 배제 (EMA 40 대비 -3% 이상 폭락 구간 진입 차단)
+                        is_not_crashing = curr_p >= (ema_macro[i] * 0.97)
+
+                        if is_calm and touched_lower and is_bullish_bounce and is_not_crashing:
                             position = "LONG"
                             entry_price = curr_p
                             holding_period = 0
+
                     elif position == "LONG":
                         holding_period += 1
                         current_pnl = (curr_p - entry_price) / entry_price
 
-                        # 청산 조건 확인 (익절, 손절, 시간 초과)
-                        is_take_profit = curr_p >= upper_band[i]
-                        is_stop_loss = current_pnl <= stop_loss_limit
-                        is_time_over = holding_period >= max_holding_bars
+                        is_tp = curr_p >= dyn_upper[i]
+                        is_sl = current_pnl <= stop_loss_limit
+                        is_spike = curr_sigma >= rv_threshold
+                        is_timeout = holding_period >= max_holding_bars
 
-                        if is_take_profit or is_stop_loss or is_time_over:
-                            trade_returns.append(current_pnl)
+                        if is_tp or is_sl or is_spike or is_timeout:
+                            trade_returns.append(float(current_pnl))
                             position = None
 
-                # 마지막 미청산 포지션 종가 청산 반영
                 if position == "LONG":
-                    final_pnl = (h_prices[-1] - entry_price) / entry_price
-                    trade_returns.append(final_pnl)
+                    trade_returns.append(float((h_prices[-1] - entry_price) / entry_price))
 
                 trade_returns = np.array(trade_returns, dtype=float)
 
