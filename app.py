@@ -2164,7 +2164,7 @@ for tab, data in zip(tabs, display_targets):
                     rf_trade = (0.035 / (252.0 * trading_h)) * avg_hold
                     excess_rets = trade_returns - rf_trade
 
-                    B = 10000
+                    B = 2000
                     N = len(excess_rets)
                     actual_mean = np.mean(excess_rets)
                     win_rate = np.mean(trade_returns > 0) * 100.0
