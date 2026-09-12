@@ -537,8 +537,52 @@ def get_detailed_trading_strategy(
 def analyze_60d_macro_regime(
     h_data, current_price, trading_hours=6.5, ticker_name=""
 ):
-  if h_data is None or len(h_data["close"]) < 60:
-    return None
+    if h_data is None or len(h_data["close"]) < 60:
+        return None
+
+    h_prices = np.array(h_data["close"], dtype=float)
+    p_min = float(np.min(h_prices))
+    p_max = float(np.max(h_prices))
+    spread = max(p_max - p_min, 1e-5)
+    channel_pos = float(((current_price - p_min) / spread) * 100.0)
+
+    # 60일 이동평균선 및 최근 추세 강도 계산
+    s_prices = pd.Series(h_prices)
+    ma20 = s_prices.rolling(20).mean().iloc[-1]
+    recent_ret = (current_price - h_prices[0]) / h_prices[0]
+
+    # 기본 상승/하락 판정
+    is_uptrend = current_price > ma20 and recent_ret > 0.02
+
+    # ▼▼▼ [핵심 수정] 상승 추세라도 채널 상단(75% 이상)이면 고점 과열/익절 가이드로 강제 분기 ▼▼▼
+    if is_uptrend and channel_pos >= 75.0:
+        return {
+            "title": "⚠️ [장기 전략] 상승 추세이나 채널 상단(고점) 도달",
+            "color": "#ea580c",
+            "desc": f"현재 채널 내 위치가 {channel_pos:.1f}%로 고점 박스권에 바짝 붙어 있습니다. 신규 추격 매수는 자제하시고 분할 익절을 준비하십시오.",
+            "regime": "고점 과열 (익절 준비)",
+        }
+    elif is_uptrend:
+        return {
+            "title": "🌊 [장기 전략 03] 편안한 상승세 (홀딩)",
+            "color": "#0284c7",
+            "desc": "오르는 힘이 아주 좋습니다. 흔들리지 말고 편안하게 계속 들고 가십시오.",
+            "regime": "상승 추세",
+        }
+    elif current_price < ma20 and recent_ret < -0.02:
+        return {
+            "title": "🛡️ [장기 전략] 하락 추세 방어 모드",
+            "color": "#dc2626",
+            "desc": "중기 이평선 아래로 밀려 내려간 하락세입니다. 신규 진입을 금지하고 비중을 조절하십시오.",
+            "regime": "하락 추세",
+        }
+    else:
+        return {
+            "title": "⚖️ [장기 전략] 박스권 횡보 국면",
+            "color": "#64748b",
+            "desc": "뚜렷한 추세 없이 박스권에서 횡보 중입니다. 상단과 하단 주요 가격대 대응을 권장합니다.",
+            "regime": "박스권 횡보",
+        }
 
   # [자동 인버스 판별 로직]
   # 종목명에 아래 키워드가 포함되어 있으면 자동으로 인버스로 인식
