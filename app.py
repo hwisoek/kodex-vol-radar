@@ -1779,10 +1779,9 @@ for tab, data in zip(tabs, display_targets):
             st.plotly_chart(fig_short, use_container_width=True)
 
         # ======================================================================
-        # [RIGHT] 장기 전략 (1시간봉 / 60일·5D 스윙 프레임)
+        # [RIGHT] 장기 전략 (1시간봉 / 60일·5D 스윙 프레임) - 최적화 버전
         # ======================================================================
         with col_long:
-            # 1. 장기 전략 대형 헤더 배너
             st.markdown(
                 """
                 <div style="background: linear-gradient(135deg, #059669 0%, #047857 100%); color: #ffffff; padding: 12px 18px; border-radius: 8px 8px 0 0; display: flex; justify-content: space-between; align-items: center;">
@@ -1793,10 +1792,19 @@ for tab, data in zip(tabs, display_targets):
                 unsafe_allow_html=True,
             )
 
-            h_data = fetch_recent_1h_candles(SYMBOL)
             trading_h = float(target_info.get("trading_hours", 6.5))
+            
+            # 💡 [핵심 최적화] API를 다시 찌르지 않고, 이미 메인 스캔 때 캐시된 1시간봉 데이터가 있다면 활용
+            # 만약 캐시가 없다면 안전하게 1회만 호출 (중복 호출 방지)
+            if "h_data_cache" not in st.session_state:
+                st.session_state["h_data_cache"] = {}
+                
+            if SYMBOL in st.session_state["h_data_cache"]:
+                h_data = st.session_state["h_data_cache"][SYMBOL]
+            else:
+                h_data = fetch_recent_1h_candles(SYMBOL)
+                st.session_state["h_data_cache"][SYMBOL] = h_data
 
-            # 👇 이 부분을 요렇게 추가해 주면 돼!
             macro = analyze_60d_macro_regime(
                 h_data,
                 current_price,
@@ -1821,7 +1829,6 @@ for tab, data in zip(tabs, display_targets):
                     else f"${macro['range_5d']:.2f}"
                 )
 
-                # 2. 장기 액션 플랜 카드
                 st.markdown(
                     f"""
                     <div style="background-color: #ffffff; border: 1px solid #cbd5e1; border-top: none; border-radius: 0 0 8px 8px; padding: 16px; margin-bottom: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.03);">
@@ -1861,7 +1868,6 @@ for tab, data in zip(tabs, display_targets):
                     unsafe_allow_html=True,
                 )
 
-                # 3. 장기 시계열 차트 (60일 궤적 + 5일 예측 밴드)
                 h_closes = h_data["close"]
                 h_times = h_data["times"]
 
@@ -1873,95 +1879,30 @@ for tab, data in zip(tabs, display_targets):
                     scale = np.sqrt(d_idx / 5.0)
                     d_drift = macro["drift_5d"] * (d_idx / 5.0)
                     d_range = macro["range_5d"] * scale
-                    future_upper_swing.append(
-                        float(current_price + d_drift + d_range)
-                    )
-                    future_lower_swing.append(
-                        float(current_price + d_drift - d_range)
-                    )
+                    future_upper_swing.append(float(current_price + d_drift + d_range))
+                    future_lower_swing.append(float(current_price + d_drift - d_range))
 
                 fig_long = go.Figure()
-                fig_long.add_trace(
-                    go.Scatter(
-                        x=h_times,
-                        y=h_closes,
-                        mode="lines",
-                        name="60일 종가",
-                        line=dict(color="#059669", width=1.8),
-                    )
-                )
-                fig_long.add_trace(
-                    go.Scatter(
-                        x=future_days,
-                        y=future_lower_swing,
-                        mode="lines",
-                        name="5D 하한 (-1σ)",
-                        line=dict(
-                            color="rgba(16,185,129,0.85)",
-                            width=1.5,
-                            dash="dot",
-                        ),
-                    )
-                )
-                fig_long.add_trace(
-                    go.Scatter(
-                        x=future_days,
-                        y=future_upper_swing,
-                        mode="lines",
-                        name="5D 상한 (+1σ)",
-                        line=dict(
-                            color="rgba(239,68,68,0.85)", width=1.5, dash="dot"
-                        ),
-                        fill="tonexty",
-                        fillcolor="rgba(16,185,129,0.1)",
-                    )
-                )
+                fig_long.add_trace(go.Scatter(x=h_times, y=h_closes, mode="lines", name="60일 종가", line=dict(color="#059669", width=1.8)))
+                fig_long.add_trace(go.Scatter(x=future_days, y=future_lower_swing, mode="lines", name="5D 하한 (-1σ)", line=dict(color="rgba(16,185,129,0.85)", width=1.5, dash="dot")))
+                fig_long.add_trace(go.Scatter(x=future_days, y=future_upper_swing, mode="lines", name="5D 상한 (+1σ)", line=dict(color="rgba(239,68,68,0.85)", width=1.5, dash="dot"), fill="tonexty", fillcolor="rgba(16,185,129,0.1)"))
 
                 last_h_time = h_times[-1]
-                fig_long.add_shape(
-                    type="line",
-                    x0=last_h_time,
-                    x1=last_h_time,
-                    y0=0,
-                    y1=1,
-                    yref="paper",
-                    line=dict(color="#64748b", width=1.5, dash="dash"),
-                )
+                fig_long.add_shape(type="line", x0=last_h_time, x1=last_h_time, y0=0, y1=1, yref="paper", line=dict(color="#64748b", width=1.5, dash="dash"))
 
                 stride_h = max(len(h_times) // 5, 1)
-                past_ticks_h = [
-                    h_times[i] for i in range(0, len(h_times), stride_h)
-                ]
+                past_ticks_h = [h_times[i] for i in range(0, len(h_times), stride_h)]
                 if last_h_time not in past_ticks_h:
                     past_ticks_h.append(last_h_time)
                 custom_ticks_swing = past_ticks_h + ["D+2", "D+5"]
 
                 fig_long.update_layout(
-                    title=dict(
-                        text=f"60일 궤적 & 5일 선행 예측 밴드",
-                        font=dict(size=14, color="#1e293b"),
-                    ),
-                    xaxis=dict(
-                        title="타임라인 (1H / D+일자)",
-                        type="category",
-                        tickmode="array",
-                        tickvals=custom_ticks_swing,
-                        gridcolor="#f1f5f9",
-                    ),
+                    title=dict(text="60일 궤적 & 5일 선행 예측 밴드", font=dict(size=14, color="#1e293b")),
+                    xaxis=dict(title="타임라인 (1H / D+일자)", type="category", tickmode="array", tickvals=custom_ticks_swing, gridcolor="#f1f5f9"),
                     yaxis=dict(title=f"가격 ({CURRENCY})", gridcolor="#f1f5f9"),
-                    plot_bgcolor="#ffffff",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    template="plotly_white",
-                    height=380,
-                    margin=dict(l=10, r=10, t=40, b=10),
-                    hovermode="x unified",
-                    legend=dict(
-                        orientation="h",
-                        yanchor="bottom",
-                        y=1.02,
-                        xanchor="right",
-                        x=1,
-                    ),
+                    plot_bgcolor="#ffffff", paper_bgcolor="rgba(0,0,0,0)", template="plotly_white",
+                    height=380, margin=dict(l=10, r=10, t=40, b=10), hovermode="x unified",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                 )
                 st.plotly_chart(fig_long, use_container_width=True)
             else:
@@ -2095,131 +2036,59 @@ for tab, data in zip(tabs, display_targets):
             )
 
         # ----------------------------------------------------------------------
-        # 하단 2: 가이드 전략(손절선 적용) 백테스팅 및 부트스트랩 비모수 검정 위젯
+        # 하단 2: 가이드 전략(손절선 적용) 백테스팅 및 부트스트랩 비모수 검정 위젯 (최적화 버전)
         # ----------------------------------------------------------------------
         with st.expander(f"📊 [{asset_name}] 가이드 전략 백테스팅 및 부트스트랩 비모수 검정"):
-            if macro is not None and "close" in h_data and len(h_data["close"]) >= 50:
-                h_prices = np.array(h_data["close"], dtype=float)
+            # 💡 [핵심 최적화] API를 다시 안 부르고 워커 함수에서 이미 계산해 둔 trade_returns를 그대로 재사용!
+            trade_returns = data.get("trade_returns", [])
+            trade_returns = np.array(trade_returns, dtype=float)
 
-                # 1. 20봉 롤링 기반 가이드 밴드(지지선/저항선) 생성
-                window = 20
-                s_prices = pd.Series(h_prices)
-                roll_mean = s_prices.rolling(window).mean().bfill().values
-                roll_std = s_prices.rolling(window).std().bfill().values
+            if len(trade_returns) >= 3:
+                trading_h = float(target_info.get("trading_hours", 6.5))
+                # 무위험 금리 차감 (보유 기회비용 반영)
+                rf_trade = (0.035 / (252.0 * trading_h)) * 2.0
+                excess_rets = trade_returns - rf_trade
 
-                lower_band = roll_mean - 1.0 * roll_std  # 지지선 (매수 후보선)
-                upper_band = roll_mean + 1.0 * roll_std  # 저항선 (익절 목표선)
-                dyn_lower = lower_band
-                dyn_upper = upper_band
+                B = 2000
+                N = len(excess_rets)
+                actual_mean = float(np.mean(excess_rets))
+                win_rate = float(np.mean(trade_returns > 0) * 100.0)
 
-                # 1시간봉 기준 12봉 롤링 실현 변동성 (변동성 필터용)
-                pct_chg = s_prices.pct_change().fillna(0.0)
-                clean_pct_chg = pct_chg.clip(lower=-0.04, upper=0.04)
-                rolling_rv = (clean_pct_chg**2).rolling(12, min_periods=3).mean().fillna(1e-5).values
-                pred_sigmas = np.sqrt(np.maximum(rolling_rv, 1e-6))
-                rv_threshold = float(np.nanpercentile(pred_sigmas, 80))
+                # 부트스트랩 비모수 검정 (H0: 초과수익 <= 0)
+                centered_excess = excess_rets - actual_mean
+                boot_samples = np.random.choice(centered_excess, size=(B, N), replace=True)
+                boot_means = np.mean(boot_samples, axis=1)
+                boot_p_val = float(np.mean(boot_means >= actual_mean))
 
-                # 2. 리스크 관리(손절선) 및 3단 정밀 필터 시뮬레이션
-                # 중기 거시 추세선 (EMA 40)
-                ema_macro = s_prices.ewm(span=40).mean().values
+                # 95% 백분위수 신뢰구간
+                raw_boot = np.random.choice(excess_rets, size=(B, N), replace=True)
+                raw_means = np.mean(raw_boot, axis=1)
+                ci_lower = float(np.percentile(raw_means, 2.5))
+                ci_upper = float(np.percentile(raw_means, 97.5))
 
-                stop_loss_limit = -0.015  # -1.5% 손절 기준
-                max_holding_bars = 40     # 40봉 타임아웃 단축
+                b1, b2, b3, b4 = st.columns(4)
+                b1.metric("총 매매 체결 수", f"{N}회", delta=f"승률: {win_rate:.1f}%")
+                b2.metric("건당 평균 초과수익", f"{actual_mean * 100:+.2f}%")
+                b3.metric(
+                    "전략 단측 p-value",
+                    f"{boot_p_val:.4f}",
+                    delta="★ 통계적 유의 (p < 0.05)" if boot_p_val < 0.05 else "유의성 부족",
+                    delta_color="normal" if boot_p_val < 0.05 else "off",
+                )
+                b4.metric(
+                    "95% 신뢰구간 (CI)",
+                    f"[{ci_lower*100:+.2f}%, {ci_upper*100:+.2f}%]",
+                )
 
-                trade_returns = []
-                position = None
-                entry_price = 0.0
-                holding_period = 0
-
-                # EMA 40 안정화 이후(40번째 봉부터) 시뮬레이션
-                for i in range(40, len(h_prices)):
-                    curr_p = h_prices[i]
-                    prev_p = h_prices[i - 1]
-                    curr_sigma = pred_sigmas[i]
-
-                    if position is None:
-                        is_calm = curr_sigma < rv_threshold
-
-                        # 직전 봉 하단 이탈/터치 여부
-                        touched_lower = prev_p <= dyn_lower[i - 1]
-
-                        # [필터 1] 양봉 반등 컨펌
-                        is_bullish_bounce = (curr_p > prev_p) and (curr_p > dyn_lower[i])
-
-                        # [필터 2] 대세 하락장 역추세 배제 (EMA 40 대비 -3% 이상 폭락 구간 진입 차단)
-                        is_not_crashing = curr_p >= (ema_macro[i] * 0.97)
-
-                        if is_calm and touched_lower and is_bullish_bounce and is_not_crashing:
-                            position = "LONG"
-                            entry_price = curr_p
-                            holding_period = 0
-
-                    elif position == "LONG":
-                        holding_period += 1
-                        current_pnl = (curr_p - entry_price) / entry_price
-
-                        is_tp = curr_p >= dyn_upper[i]
-                        is_sl = current_pnl <= stop_loss_limit
-                        is_spike = curr_sigma >= rv_threshold
-                        is_timeout = holding_period >= max_holding_bars
-
-                        if is_tp or is_sl or is_spike or is_timeout:
-                            trade_returns.append(float(current_pnl))
-                            position = None
-
-                if position == "LONG":
-                    trade_returns.append(float((h_prices[-1] - entry_price) / entry_price))
-
-                trade_returns = np.array(trade_returns, dtype=float)
-
-                if len(trade_returns) >= 5:
-                    # 무위험 금리 차감 (보유 기회비용 반영)
-                    avg_hold = max(holding_period, 2)
-                    rf_trade = (0.035 / (252.0 * trading_h)) * avg_hold
-                    excess_rets = trade_returns - rf_trade
-
-                    B = 2000
-                    N = len(excess_rets)
-                    actual_mean = np.mean(excess_rets)
-                    win_rate = np.mean(trade_returns > 0) * 100.0
-
-                    # 부트스트랩 비모수 검정 (H0: 초과수익 <= 0)
-                    centered_excess = excess_rets - actual_mean
-                    boot_samples = np.random.choice(centered_excess, size=(B, N), replace=True)
-                    boot_means = np.mean(boot_samples, axis=1)
-                    boot_p_val = float(np.mean(boot_means >= actual_mean))
-
-                    # 95% 백분위수 신뢰구간
-                    raw_boot = np.random.choice(excess_rets, size=(B, N), replace=True)
-                    raw_means = np.mean(raw_boot, axis=1)
-                    ci_lower = float(np.percentile(raw_means, 2.5))
-                    ci_upper = float(np.percentile(raw_means, 97.5))
-
-                    b1, b2, b3, b4 = st.columns(4)
-                    b1.metric("총 매매 체결 수", f"{N}회", delta=f"승률: {win_rate:.1f}%")
-                    b2.metric("건당 평균 초과수익", f"{actual_mean * 100:+.2f}%")
-                    b3.metric(
-                        "전략 단측 p-value",
-                        f"{boot_p_val:.4f}",
-                        delta="★ 통계적 유의 (p < 0.05)" if boot_p_val < 0.05 else "유의성 부족",
-                        delta_color="normal" if boot_p_val < 0.05 else "off",
-                    )
-                    b4.metric(
-                        "95% 신뢰구간 (CI)",
-                        f"[{ci_lower*100:+.2f}%, {ci_upper*100:+.2f}%]",
-                    )
-
-                    st.markdown(
-                        f"""
-                        <div style="font-size: 12px; color: #334155; line-height: 1.5; background-color: #f8fafc; padding: 10px 14px; border-radius: 6px; border: 1px solid #e2e8f0; margin-top: 8px;">
-                            📌 <b>가이드 백테스팅 검증 요약:</b><br>
-                            - 최근 60일 1시간봉 기준 <b>지지선 반등 진입 $\\rightarrow$ 저항선 익절 / 손절(-1.5%)</b> 규칙 적용 시 총 <b>{N}회</b> 체결.<br>
-                            - 손익비 관리(칼손절) 반영 후 산출된 건당 평균 초과수익은 <b>{actual_mean * 100:+.2f}%</b>이며, 부트스트랩({B:,}회) 검정 p-value는 <b>{boot_p_val:.4f}</b>입니다.
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    st.info(f"💡 최근 60일간 가이드 타점을 만족하는 체결 수가 부족합니다 ({len(trade_returns)}회 발생).")
+                st.markdown(
+                    f"""
+                    <div style="font-size: 12px; color: #334155; line-height: 1.5; background-color: #f8fafc; padding: 10px 14px; border-radius: 6px; border: 1px solid #e2e8f0; margin-top: 8px;">
+                        📌 <b>가이드 백테스팅 검증 요약:</b><br>
+                        - 최근 60일 1시간봉 기준 <b>지지선 반등 진입 $\\rightarrow$ 저항선 익절 / 손절(-1.5%)</b> 규칙 적용 시 총 <b>{N}회</b> 체결.<br>
+                        - 손익비 관리(칼손절) 반영 후 산출된 건당 평균 초과수익은 <b>{actual_mean * 100:+.2f}%</b>이며, 부트스트랩({B:,}회) 검정 p-value는 <b>{boot_p_val:.4f}</b>입니다.
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
             else:
-                st.info("💡 60일 1시간봉 데이터가 부족하여 가이드 백테스팅을 실행할 수 없습니다.")
+                st.info(f"💡 최근 60일간 가이드 타점을 만족하는 체결 수가 부족합니다 ({len(trade_returns)}회 발생).")
