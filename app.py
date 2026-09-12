@@ -1086,7 +1086,7 @@ def process_single_asset(asset_name, target_info):
                 dyn_upper = mid_line * (1.0 + pred_sigmas)
 
                 stop_loss_limit = -0.020
-                max_holding_bars = 40
+                max_holding_bars = 60
 
                 position = None
                 entry_price = 0.0
@@ -2081,7 +2081,7 @@ for tab, data in zip(tabs, display_targets):
                 # 진입: 지지선 하향 이탈 후 복귀(반등)
                 # 청산: 저항선 도달(익절) OR -2.0% 하락(손절) OR 15봉 초과 보유
                 stop_loss_limit = -0.020  # -2.0% 손절 기준
-                max_holding_bars = 40
+                max_holding_bars = 60
 
                 trade_returns = []
                 position = None
