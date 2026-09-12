@@ -1402,7 +1402,10 @@ with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 &
             u3.metric(
                 "가이드 전략 p-value",
                 f"{pooled_p_val:.4f}",
-                delta="★ 모델 알파 유의 (p < 0.05)" if pooled_p_val < 0.05 else "구조적 엣지 확인 (p ≈ 0.12)",
+                delta="★ 모델 알파 유의 (p < 0.05)" 
+                if pooled_p_val < 0.05 
+                else ("유의수준 90% 통과 (p < 0.10)" if pooled_p_val < 0.10 else "유의성 부족")
+    ),
                 delta_color="normal" if pooled_p_val < 0.10 else "off"
             )
             u4.metric("통합 95% 신뢰구간", f"[{ci_lower_total*100:+.2f}%, {ci_upper_total*100:+.2f}%]")
