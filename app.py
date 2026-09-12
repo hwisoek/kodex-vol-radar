@@ -1175,12 +1175,12 @@ def process_single_asset(asset_name, target_info):
 
 
 # ==============================================================================
-# 8. 메인 렌더링 & 병렬 계산
+# 8. 메인 렌더링 & 병렬 계산 (장 중인 종목만 필터링)
 # ==============================================================================
 st.markdown("## 🎯 글로벌 실시간 변동성 스캐너 & 멀티 프레임 레이더")
 
 all_calculated = []
-with st.spinner("TICKER_MAP 내 전체 종목의 변동성 데이터를 병렬 스캔 중..."):
+with st.spinner("현재 장이 열려 있는(OPEN) 종목들의 변동성 데이터를 병렬 스캔 중..."):
     with ThreadPoolExecutor(max_workers=8) as executor:
         futures = [
             executor.submit(process_single_asset, name, info)
@@ -1189,14 +1189,15 @@ with st.spinner("TICKER_MAP 내 전체 종목의 변동성 데이터를 병렬 �
         for f in as_completed(futures):
             res = f.result()
             if res is not None:
-                all_calculated.append(res)
+                # 👇 핵심: 현재 장이 열려 있는(is_open == True) 종목만 담기!
+                if res["is_open"]:
+                    all_calculated.append(res)
 
 if not all_calculated:
-    st.error("데이터 수집에 성공한 종목이 없습니다. 네트워크 환경을 확인하세요.")
+    st.warning("현재 실시간으로 장이 열려 있는(OPEN) 종목이 없습니다. (모든 시장 마감 상태)")
     st.stop()
 
 full_ranked = sorted(all_calculated, key=lambda x: x["risk_score"], reverse=True)
-
 # ------------------------------------------------------------------------------
 # 8-1. 순위표 (국장/미장 탭 분리, 상태 배지, 순위 변동 추적)
 # ------------------------------------------------------------------------------
