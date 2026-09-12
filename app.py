@@ -985,20 +985,18 @@ def analyze_60d_macro_regime(
         "low_60d": low_60d,
     }
 # ==============================================================================
-# 7. 단일 종목 연산 워커 함수 (장 마감 시 캐시 우선 반환 최적화 적용)
+# 7. 단일 종목 연산 워커 함수 (메인 스레드에서 캐시를 주입받도록 수정)
 # ==============================================================================
-def process_single_asset(asset_name, target_info):
+def process_single_asset(asset_name, target_info, cached_data=None):
     is_open, time_display_str, hours_desc = get_single_market_status_text(
         target_info["tz"], target_info["is_kr"]
     )
 
-    # 🛑 [최적화 핵심] 장이 닫혀 있고(CLOSED) 이미 캐시된 데이터가 있다면 API 및 연산 완전 스킵!
-    if not is_open and asset_name in st.session_state["closed_asset_cache"]:
-        cached_res = st.session_state["closed_asset_cache"][asset_name]
-        # 실시간 상태 표시(마감 시간 등)만 현재 시점에 맞춰 살짝 갱신
-        cached_res["is_open"] = is_open
-        cached_res["time_display_str"] = time_display_str
-        return cached_res
+    # 🛑 [최적화 핵심] 장이 닫혀 있고 미리 전달받은 캐시 데이터가 있다면 연산 완전 스킵!
+    if not is_open and cached_data is not None:
+        cached_data["is_open"] = is_open
+        cached_data["time_display_str"] = time_display_str
+        return cached_data
 
     symbol = str(target_info["symbol"])
 
@@ -1007,9 +1005,8 @@ def process_single_asset(asset_name, target_info):
             symbol, target_info["is_kr"], target_info.get("naver_symbol", "")
         )
         if len(prices) != 24:
-            # 수신 실패 시 혹시 캐시가 있다면 백업으로 반환
-            if asset_name in st.session_state["closed_asset_cache"]:
-                return st.session_state["closed_asset_cache"][asset_name]
+            if cached_data is not None:
+                return cached_data
             return None
 
         current_price = float(prices[-1])
@@ -1078,9 +1075,7 @@ def process_single_asset(asset_name, target_info):
             risk_score, channel_pos, rr_ratio, is_whipsaw_risk, trend_intensity
         )
 
-        # ----------------------------------------------------------------------
-        # 60일 1시간봉 기반 [ML 변동성 예측 & 레짐 가이드] 백테스팅 연산
-        # ----------------------------------------------------------------------
+        # 60일 1시간봉 기반 백테스팅 연산
         trade_returns = []
         time_over_count = 0
         try:
@@ -1176,36 +1171,40 @@ def process_single_asset(asset_name, target_info):
             "time_over_count": time_over_count,
         }
 
-        # 📥 장 마감 상태가 되면 계산된 결과를 세션 캐시에 안전하게 백업
-        if not is_open:
-            st.session_state["closed_asset_cache"][asset_name] = result_dict
-
         return result_dict
 
     except Exception:
-        # 예외 발생 시 캐시에 데이터가 있다면 백업용으로 반환하여 앱 충돌 방지
-        if asset_name in st.session_state["closed_asset_cache"]:
-            return st.session_state["closed_asset_cache"][asset_name]
+        if cached_data is not None:
+            return cached_data
         return None
 
-
 # ==============================================================================
-# 8. 메인 렌더링 & 병렬 계산 (전체 종목을 순위표에 띄우되 장 마감 종목은 연산 스킵)
+# 8. 메인 렌더링 & 병렬 계산
 # ==============================================================================
 st.markdown("## 🎯 글로벌 실시간 변동성 스캐너 & 멀티 프레임 레이더")
 
 all_calculated = []
-with st.spinner("종목별 변동성 데이터를 병렬 스캔 중 (장 마감 종목은 캐시 활용)..."):
+with st.spinner("종목별 변동성 데이터를 병렬 스캔 중..."):
     with ThreadPoolExecutor(max_workers=8) as executor:
-        futures = [
-            executor.submit(process_single_asset, name, info)
-            for name, info in TICKER_MAP.items()
-        ]
+        futures = {}
+        for name, info in TICKER_MAP.items():
+            # 🛑 [핵심] 메인 스레드에서 안전하게 캐시 상태를 미리 확인
+            is_open_check, _, _ = get_single_market_status_text(info["tz"], info["is_kr"])
+            cached_item = None
+            
+            if not is_open_check and name in st.session_state["closed_asset_cache"]:
+                cached_item = st.session_state["closed_asset_cache"][name]
+
+            # 워커에 안전한 값 전달
+            futures[executor.submit(process_single_asset, name, info, cached_item)] = name
+
         for f in as_completed(futures):
             res = f.result()
             if res is not None:
-                # 👇 모든 종목을 그대로 리스트에 담아 순위표와 상세 탭에 정상 노출!
                 all_calculated.append(res)
+                # 장이 닫혀 있다면 캐시에 결과 저장
+                if not res["is_open"]:
+                    st.session_state["closed_asset_cache"][res["asset_name"]] = res
 
 if not all_calculated:
     st.error("데이터 수집에 성공한 종목이 없습니다. 네트워크 환경을 확인하세요.")
