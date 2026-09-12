@@ -1073,13 +1073,13 @@ def process_single_asset(asset_name, target_info):
         )
 
         # ----------------------------------------------------------------------
-        # 60일 1시간봉 기반 [ML 변동성 예측 & 레짐 가이드] 백테스팅 연산 (안전 버전)
+        # 60일 1시간봉 기반 [ML 변동성 예측 & 레짐 가이드] 백테스팅 연산 (3단 필터 적용)
         # ----------------------------------------------------------------------
         trade_returns = []
         time_over_count = 0
         try:
             h_data = fetch_recent_1h_candles(symbol)
-            if h_data is not None and "close" in h_data and len(h_data["close"]) >= 30:
+            if h_data is not None and "close" in h_data and len(h_data["close"]) >= 45:
                 h_prices = np.array(h_data["close"], dtype=float)
                 s_prices = pd.Series(h_prices)
 
@@ -1097,27 +1097,40 @@ def process_single_asset(asset_name, target_info):
                 dyn_lower = mid_line * (1.0 - pred_sigmas)
                 dyn_upper = mid_line * (1.0 + pred_sigmas)
 
-                stop_loss_limit = -0.020
-                max_holding_bars = 60
+                # [필터 2용] 40봉 EMA 중기 거시 추세선 산출
+                ema_macro = s_prices.ewm(span=40).mean().values
+
+                # [필터 3용] 손익비 최적화: 칼손절 -1.5% 강화 및 타임아웃 40봉 단축
+                stop_loss_limit = -0.015
+                max_holding_bars = 40
 
                 position = None
                 entry_price = 0.0
                 holding_period = 0
 
-                # 15번째 봉부터 시뮬레이션
-                for i in range(15, len(h_prices)):
+                # EMA 40이 안정화되는 40번째 봉부터 시뮬레이션
+                for i in range(40, len(h_prices)):
                     curr_p = h_prices[i]
                     prev_p = h_prices[i - 1]
                     curr_sigma = pred_sigmas[i]
 
                     if position is None:
                         is_calm = curr_sigma < rv_threshold
-                        is_bounce = (prev_p <= dyn_lower[i - 1]) and (curr_p > dyn_lower[i])
 
-                        if is_calm and is_bounce:
+                        # 직전 봉 하단 이탈/터치 여부
+                        touched_lower = prev_p <= dyn_lower[i - 1]
+
+                        # [필터 1] 양봉 반등 컨펌: 전봉보다 오르고 하단선 위로 올라선 명확한 반등봉
+                        is_bullish_bounce = (curr_p > prev_p) and (curr_p > dyn_lower[i])
+
+                        # [필터 2] 대세 하락장 역추세 배제: 중기선(EMA 40) 대비 -3% 이상 폭락 구간 진입 차단
+                        is_not_crashing = curr_p >= (ema_macro[i] * 0.97)
+
+                        if is_calm and touched_lower and is_bullish_bounce and is_not_crashing:
                             position = "LONG"
                             entry_price = curr_p
                             holding_period = 0
+
                     elif position == "LONG":
                         holding_period += 1
                         current_pnl = (curr_p - entry_price) / entry_price
@@ -1130,12 +1143,8 @@ def process_single_asset(asset_name, target_info):
                         if is_tp or is_sl or is_spike or is_timeout:
                             if is_timeout:
                                 time_over_count += 1
-                                print(f"[{symbol} | {i}번째 봉] 시간 초과 청산 발생! 수익률: {current_pnl*100:+.2f}%")
-
                             trade_returns.append(float(current_pnl))
                             position = None
-
-                print(f"[{symbol}] 총 매매 {len(trade_returns)}회 중 시간 초과 청산 횟수: {time_over_count}회")
 
                 if position == "LONG":
                     trade_returns.append(float((h_prices[-1] - entry_price) / entry_price))
