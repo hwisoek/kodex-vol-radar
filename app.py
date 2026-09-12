@@ -24,7 +24,7 @@ st.set_page_config(
 )
 
 st_autorefresh(
-    interval=60 * 1000,
+    interval=240 * 1000,
     key="global_vol_radar_refresh"
 )
 
