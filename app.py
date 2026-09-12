@@ -1062,6 +1062,54 @@ def process_single_asset(asset_name, target_info):
             risk_score, channel_pos, rr_ratio, is_whipsaw_risk, trend_intensity
         )
 
+        # ----------------------------------------------------------------------
+        # 60일 1시간봉 가이드 매매(지지선 반등 진입 & -2% 칼손절) 백테스팅 연산
+        # ----------------------------------------------------------------------
+        trade_returns = []
+        try:
+            h_data = fetch_recent_1h_candles(symbol)
+            if h_data is not None and "close" in h_data and len(h_data["close"]) >= 50:
+                h_prices = np.array(h_data["close"], dtype=float)
+                window = 20
+                s_prices = pd.Series(h_prices)
+                roll_mean = s_prices.rolling(window).mean().bfill().values
+                roll_std = s_prices.rolling(window).std().bfill().values
+
+                lower_band = roll_mean - 1.0 * roll_std
+                upper_band = roll_mean + 1.0 * roll_std
+                stop_loss_limit = -0.020
+                max_holding_bars = 15
+
+                position = None
+                entry_price = 0.0
+                holding_period = 0
+
+                for i in range(window, len(h_prices)):
+                    curr_p = h_prices[i]
+                    prev_p = h_prices[i - 1]
+
+                    if position is None:
+                        if prev_p <= lower_band[i - 1] and curr_p > lower_band[i]:
+                            position = "LONG"
+                            entry_price = curr_p
+                            holding_period = 0
+                    elif position == "LONG":
+                        holding_period += 1
+                        current_pnl = (curr_p - entry_price) / entry_price
+
+                        if (
+                            curr_p >= upper_band[i]
+                            or current_pnl <= stop_loss_limit
+                            or holding_period >= max_holding_bars
+                        ):
+                            trade_returns.append(current_pnl)
+                            position = None
+
+                if position == "LONG":
+                    trade_returns.append((h_prices[-1] - entry_price) / entry_price)
+        except Exception:
+            trade_returns = []
+
         return {
             "asset_name": asset_name,
             "target_info": target_info,
@@ -1089,6 +1137,7 @@ def process_single_asset(asset_name, target_info):
             "dynamic_asset_offset": dynamic_asset_offset,
             "raw_pred_log_rv": raw_pred_log_rv,
             "fpc_scores": fpc_scores,
+            "trade_returns": trade_returns,  # 통합 백테스팅용 거래 손익 배열 반환
         }
     except Exception:
         return None
@@ -1243,7 +1292,68 @@ with tab_us:
         hide_index=True,
         height=340,
     )
+# ------------------------------------------------------------------------------
+# 8-1.5. [해결책 B] 유니버스 전체 통합 횡단면 부트스트랩 검증 패널
+# ------------------------------------------------------------------------------
+st.markdown("---")
+with st.expander("🌐 [유니버스 전체 통합] 가이드 전략 신뢰도 및 통계적 유의성 검정 (Cross-Sectional Bootstrap)", expanded=True):
+    # 전 종목의 트레이딩 수익률을 한 바구니로 취합 (Pooled Data)
+    all_trades = []
+    for d in full_ranked:
+        if "trade_returns" in d and len(d["trade_returns"]) > 0:
+            all_trades.extend(d["trade_returns"])
+            
+    all_trades = np.array(all_trades, dtype=float)
+    
+    if len(all_trades) >= 30:
+        # 거래당 평균 무위험 기회비용 차감 (연 3.5% / 252일 기준 약 5봉 보유)
+        rf_per_trade = (0.035 / 252.0) * (5.0 / 6.5)
+        pooled_excess = all_trades - rf_per_trade
 
+        B = 10000
+        N_total = len(pooled_excess)
+        actual_mean_total = np.mean(pooled_excess)
+        win_rate_total = np.mean(all_trades > 0) * 100.0
+
+        # 귀무가설 H0: 가이드 전략의 전체 평균 초과수익 <= 0
+        centered_pooled = pooled_excess - actual_mean_total
+
+        # 대규모 부트스트랩 리샘플링
+        boot_samples = np.random.choice(centered_pooled, size=(B, N_total), replace=True)
+        boot_means = np.mean(boot_samples, axis=1)
+        pooled_p_val = float(np.mean(boot_means >= actual_mean_total))
+
+        # 95% 백분위수 신뢰구간 (Percentile Bootstrap CI)
+        raw_boot = np.random.choice(pooled_excess, size=(B, N_total), replace=True)
+        raw_means = np.mean(raw_boot, axis=1)
+        ci_lower_total = float(np.percentile(raw_means, 2.5))
+        ci_upper_total = float(np.percentile(raw_means, 97.5))
+
+        # UI 출력
+        u1, u2, u3, u4 = st.columns(4)
+        u1.metric("통합 표본 수 (전체 체결)", f"{N_total:,}회", delta=f"평균 승률: {win_rate_total:.1f}%")
+        u2.metric("전체 건당 평균 초과수익", f"{actual_mean_total * 100:+.2f}%")
+        u3.metric(
+            "통합 전략 p-value",
+            f"{pooled_p_val:.4f}",
+            delta="★ 통계적 알파 확보 (p < 0.05)" if pooled_p_val < 0.05 else "유의성 부족",
+            delta_color="normal" if pooled_p_val < 0.05 else "off"
+        )
+        u4.metric("통합 95% 신뢰구간", f"[{ci_lower_total*100:+.2f}%, {ci_upper_total*100:+.2f}%]")
+
+        st.markdown(
+            f"""
+            <div style="font-size: 13px; color: #1e293b; line-height: 1.6; background-color: #f8fafc; padding: 12px 16px; border-radius: 8px; border: 1px solid #e2e8f0; margin-top: 10px;">
+                💡 <b>시스템 퀀트 검증 진단:</b><br>
+                - 단일 종목의 15~18회 소표본 한계를 극복하기 위해, 모니터링 중인 <b>전체 유니버스({len(full_ranked)}개 자산)의 최근 60일 타점 총 {N_total:,}건</b>을 통합 검정했어.<br>
+                - 통합 건당 기대 초과수익은 <b>{actual_mean_total * 100:+.2f}%</b>이며, 1만 회 부트스트랩 비모수 검정 결과 단측 p-value는 <b>{pooled_p_val:.4f}</b>로 산출되었어.<br>
+                - p-value가 0.05 미만일 경우, 이 가이드의 지지/저항 밴드 반등 로직은 개별 자산의 일시적 노이즈가 아닌 <b>시장 전체에서 통계적으로 유효한 구조적 알파(Edge)</b>를 갖고 있음을 의미해.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        st.info("💡 통합 검증을 위한 전체 유니버스 체결 데이터 표본이 부족합니다.")
 # ------------------------------------------------------------------------------
 # 8-2. 상세 종목 탭 렌더링
 # ------------------------------------------------------------------------------
