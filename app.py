@@ -2106,6 +2106,15 @@ for tab, data in zip(tabs, display_targets):
 
                 lower_band = roll_mean - 1.0 * roll_std  # 지지선 (매수 후보선)
                 upper_band = roll_mean + 1.0 * roll_std  # 저항선 (익절 목표선)
+                dyn_lower = lower_band
+                dyn_upper = upper_band
+
+                # 1시간봉 기준 12봉 롤링 실현 변동성 (변동성 필터용)
+                pct_chg = s_prices.pct_change().fillna(0.0)
+                clean_pct_chg = pct_chg.clip(lower=-0.04, upper=0.04)
+                rolling_rv = (clean_pct_chg**2).rolling(12, min_periods=3).mean().fillna(1e-5).values
+                pred_sigmas = np.sqrt(np.maximum(rolling_rv, 1e-6))
+                rv_threshold = float(np.nanpercentile(pred_sigmas, 80))
 
                 # 2. 리스크 관리(손절선) 및 3단 정밀 필터 시뮬레이션
                 # 중기 거시 추세선 (EMA 40)
