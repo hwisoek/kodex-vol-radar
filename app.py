@@ -1012,8 +1012,10 @@ def process_single_asset(asset_name, target_info):
             padded[: len(fpc_scores)] = fpc_scores
             fpc_scores = padded
 
+        # 5분봉 로그수익률 산출 및 단발성 팻핑거(±4%) 클리핑 완충
         in_log_ret = np.diff(log_prices)
-        sum_sq = float(np.sum(in_log_ret**2))
+        clean_log_ret = np.clip(in_log_ret, -0.04, 0.04)
+        sum_sq = float(np.sum(clean_log_ret**2))
         in_rv = float(np.log(sum_sq + 1e-8))
 
         feat_list = [in_rv] + [float(val) for val in fpc_scores]
@@ -1066,15 +1068,17 @@ def process_single_asset(asset_name, target_info):
         # 60일 1시간봉 기반 [ML 변동성 예측 & 레짐 가이드] 백테스팅 연산 (안전 버전)
         # ----------------------------------------------------------------------
         trade_returns = []
+        time_over_count = 0
         try:
             h_data = fetch_recent_1h_candles(symbol)
             if h_data is not None and "close" in h_data and len(h_data["close"]) >= 30:
                 h_prices = np.array(h_data["close"], dtype=float)
                 s_prices = pd.Series(h_prices)
 
-                # 1. 1시간봉 기준 12봉 롤링 실현 변동성 계산
+                # 1. 1시간봉 기준 12봉 롤링 실현 변동성 계산 (팻핑거 클리핑 적용)
                 pct_chg = s_prices.pct_change().fillna(0.0)
-                rolling_rv = (pct_chg**2).rolling(12, min_periods=3).mean().fillna(1e-5).values
+                clean_pct_chg = pct_chg.clip(lower=-0.04, upper=0.04)
+                rolling_rv = (clean_pct_chg**2).rolling(12, min_periods=3).mean().fillna(1e-5).values
                 pred_sigmas = np.sqrt(np.maximum(rolling_rv, 1e-6))
 
                 # 변동성 폭발 상위 20% 임계값
@@ -1091,7 +1095,6 @@ def process_single_asset(asset_name, target_info):
                 position = None
                 entry_price = 0.0
                 holding_period = 0
-                time_over_count = 0  # 1. 시간 초과 청산 카운터 추가
 
                 # 15번째 봉부터 시뮬레이션
                 for i in range(15, len(h_prices)):
@@ -1117,7 +1120,6 @@ def process_single_asset(asset_name, target_info):
                         is_timeout = holding_period >= max_holding_bars
 
                         if is_tp or is_sl or is_spike or is_timeout:
-                            # 2. 시간 초과 발생 여부 로깅 및 카운트
                             if is_timeout:
                                 time_over_count += 1
                                 print(f"[{symbol} | {i}번째 봉] 시간 초과 청산 발생! 수익률: {current_pnl*100:+.2f}%")
@@ -1125,7 +1127,6 @@ def process_single_asset(asset_name, target_info):
                             trade_returns.append(float(current_pnl))
                             position = None
 
-                # 3. 시뮬레이션 완료 후 시간 초과 총 발생 횟수 출력
                 print(f"[{symbol}] 총 매매 {len(trade_returns)}회 중 시간 초과 청산 횟수: {time_over_count}회")
 
                 if position == "LONG":
@@ -1161,6 +1162,7 @@ def process_single_asset(asset_name, target_info):
             "raw_pred_log_rv": raw_pred_log_rv,
             "fpc_scores": fpc_scores,
             "trade_returns": trade_returns,
+            "time_over_count": time_over_count,
         }
     except Exception:
         return None
