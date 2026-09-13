@@ -1089,18 +1089,33 @@ def process_single_asset(asset_name, target_info, cached_data=None):
 
                     if position is None:
                         is_calm = curr_sigma < rv_threshold
+
+                        # ------------------------------------------------------
+                        # [경로 A] 박스권/눌림목: 하단 밴드 지지 반등
+                        # ------------------------------------------------------
                         touched_lower = prev_p <= dyn_lower[i - 1]
                         is_bullish_bounce = (curr_p >= prev_p * 1.002) and (curr_p > dyn_lower[i])
+                        signal_dip_buy = touched_lower and is_bullish_bounce
+
+                        # ------------------------------------------------------
+                        # [경로 B] 대세 상승 초입: 20선 돌파 & 모멘텀 탑승 (달리는 말 올라타기)
+                        # ------------------------------------------------------
+                        # 조건: 직전 봉은 20선 아래/부근 -> 현재 봉에서 20선을 강하게 상향 돌파
+                        #       + 10선(중심선) 위 안착 + 채널 바닥을 벗어난 중상단 시세 분출 초입
+                        crossed_ma20 = (prev_p <= ma20_series[i - 1]) and (curr_p > c_ma20 * 1.003)
+                        is_momentum_up = (curr_p > mid_line[i]) and (macro_pos >= 25.0) and (macro_pos <= 80.0)
+                        signal_breakout = crossed_ma20 and is_momentum_up
 
                         # 🎯 스마트 레짐 필터
                         if is_real_bear:
                             macro_allow = False              # 급락 우하향 추세만 완전 차단
                         elif is_bull:
-                            macro_allow = macro_pos <= 75.0  # 상승 추세: 상단 75%까지 눌림 매수 허용
+                            macro_allow = macro_pos <= 80.0  # 상승 추세: 상단 80%까지 적극 진입
                         else:
-                            macro_allow = macro_pos <= 60.0  # 횡보/완만 조정: 60% 이하 저점권 매수 허용
+                            macro_allow = macro_pos <= 60.0  # 횡보장: 60% 이하 저점/중심권 진입
 
-                        if is_calm and touched_lower and is_bullish_bounce and macro_allow:
+                        # 두 경로 중 하나라도 시그널이 뜨고 레짐 필터를 통과하면 진입
+                        if is_calm and (signal_dip_buy or signal_breakout) and macro_allow:
                             position = "LONG"
                             entry_price = curr_p
                             entry_time = h_data["times"][i]
