@@ -1871,29 +1871,32 @@ for tab, data in zip(tabs, display_targets):
                 trade_log = data.get("trade_log", [])
                 if trade_log:
                     # 0. 매수~매도 보유 구간 음영 표시 (한국 기준: 수익=빨강, 손실=파랑)
-                    for trade in trade_log:
+                    for idx, trade in enumerate(trade_log):
                         is_profit = trade["pnl"] > 0
-                        # 수익: 연한 빨강 / 손실: 연한 파랑
                         fill_col = "rgba(239, 68, 68, 0.15)" if is_profit else "rgba(59, 130, 246, 0.15)"
                         line_col = "rgba(239, 68, 68, 0.3)" if is_profit else "rgba(59, 130, 246, 0.3)"
+
+                        # 연속 거래 시 글자 겹침 방지: 홀수/짝수 라벨 높이 지그재그 분리
+                        pos = "top left" if idx % 2 == 0 else "top right"
 
                         fig_long.add_vrect(
                             x0=trade["entry_time"],
                             x1=trade["exit_time"],
                             fillcolor=fill_col,
                             opacity=1.0,
-                            layer="below",          # 주가 선 및 마커 뒤쪽으로 배치
+                            layer="below",
                             line_width=1,
                             line_color=line_col,
                             annotation_text=f"{'+' if is_profit else ''}{trade['pnl']*100:.1f}%",
-                            annotation_position="top left",
+                            annotation_position=pos,
                             annotation=dict(
                                 font=dict(
-                                    size=10,
+                                    size=9,
                                     color="#b91c1c" if is_profit else "#1d4ed8",
-                                    family="Arial"
-                                )
-                            )
+                                    family="Arial",
+                                ),
+                                yshift=10 if idx % 2 == 0 else -5,  # 텍스트 높이를 번갈아 위아래로 교차
+                            ),
                         )
 
                     # 1. 매수 타점 (노란색/주황색 계열이나 초록색 유지)
