@@ -1081,6 +1081,11 @@ def process_single_asset(asset_name, target_info, cached_data=None):
 
                     is_bull = curr_p > c_ma20
 
+                    # 60선 기울기 및 대세 하락장 판별 복원
+                    ma60_prev5 = ma60_series[i - 5] if i >= 5 else c_ma60
+                    ma60_falling = c_ma60 < ma60_prev5 * 0.998
+                    is_real_bear = (curr_p < c_ma60) and ma60_falling
+
                     # 1) 미보유 상태: 1차 50% 분할 매수 진입 검토
                     if position is None:
                         is_calm = curr_sigma < rv_threshold
@@ -1091,9 +1096,8 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                         band_spread = (dyn_upper[i] - dyn_lower[i]) / curr_p
                         has_enough_spread = band_spread >= 0.015
 
-                        # 🎯 60선 역배열 배제 필터
-                        ma60_falling = c_ma60 < ma60_series[i - 5] * 0.995 if i >= 5 else False
-                        if is_real_bear or ma60_falling::
+                        # 🎯 추세 필터: 60선 자체가 우하향으로 꺾인 대세 하락 종목만 원천 차단
+                        if is_real_bear or ma60_falling:
                             macro_allow = False
                         elif is_bull:
                             macro_allow = macro_pos <= 80.0
