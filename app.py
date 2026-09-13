@@ -1395,16 +1395,15 @@ with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 &
         m4.metric("HAC 보정 DM 통계량", f"t = {dm_t_stat:.3f}")
 
         st.markdown(
-                    f"""
-                    <div style="font-size: 12px; color: #334155; line-height: 1.5; background-color: #f8fafc; padding: 10px 14px; border-radius: 6px; border: 1px solid #e2e8f0; margin-top: 8px;">
-                        📌 <b>가이드 백테스팅 검증 요약:</b><br>
-                        - 최근 60일 1시간봉 기준 <b>지지선 반등 진입 $\\rightarrow$ 밴드 상단 50% 분할 익절 & 중심선 추세 추종 청산</b> 규칙 적용 시 총 <b>{N}회</b> 체결.<br>
-                        - 거시 레짐 필터 및 분할 청산 반영 후 산출된 건당 평균 초과수익은 <b>{actual_mean * 100:+.2f}%</b>이며, 부트스트랩({B:,}회) 검정 p-value는 <b>{boot_p_val:.4f}</b>입니다.
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
+                f"""
+                <div style="font-size: 13px; color: #1e293b; line-height: 1.6; background-color: #f8fafc; padding: 12px 16px; border-radius: 8px; border: 1px solid #e2e8f0; margin-top: 10px;">
+                    ⚡ <b>실전 매매 가이드 시뮬레이션 진단:</b><br>
+                    - 단순 볼린저 밴드가 아닌 <b>실시간 실현 변동성(RV) 동적 밴드 및 50% 분할 익절 & 추세 추종 청산 필터</b>를 전 유니버스에 적용한 결과야.<br>
+                    - 총 <b>{N_total:,}회</b> 체결 동안 승률 <b>{win_rate_total:.1f}%</b>, 건당 초과수익 <b>{actual_mean_total*100:+.2f}%</b>를 기록하며 실전 가이드로서의 유효성을 보여줘.
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
     # --------------------------------------------------------------------------
     # TAB 2: 실전 동적 가이드 룰 시뮬레이션 (1,593회 체결 데이터)
     # --------------------------------------------------------------------------
