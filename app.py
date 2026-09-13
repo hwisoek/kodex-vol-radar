@@ -1870,6 +1870,30 @@ for tab, data in zip(tabs, display_targets):
                 # ------------------------------------------------------
                 trade_log = data.get("trade_log", [])
                 if trade_log:
+                    # 0. 매수~매도 보유 구간 음영 표시 (수익: 연한 파랑 / 손실: 연한 빨강)
+                    for trade in trade_log:
+                        is_profit = trade["pnl"] > 0
+                        fill_col = "rgba(59, 130, 246, 0.15)" if is_profit else "rgba(239, 68, 68, 0.15)"
+                        line_col = "rgba(59, 130, 246, 0.3)" if is_profit else "rgba(239, 68, 68, 0.3)"
+
+                        fig_long.add_vrect(
+                            x0=trade["entry_time"],
+                            x1=trade["exit_time"],
+                            fillcolor=fill_col,
+                            opacity=1.0,
+                            layer="below",          # 주가 선 및 마커 뒤쪽으로 배치
+                            line_width=1,
+                            line_color=line_col,
+                            annotation_text=f"{'+' if is_profit else ''}{trade['pnl']*100:.1f}%",
+                            annotation_position="top left",
+                            annotation=dict(
+                                font=dict(
+                                    size=10,
+                                    color="#1d4ed8" if is_profit else "#b91c1c",
+                                    family="Arial"
+                                )
+                            )
+                        )
                     # 1. 매수 타점 (초록색 위쪽 삼각형 ▲)
                     buy_t = [t["entry_time"] for t in trade_log]
                     buy_p = [t["entry_price"] for t in trade_log]
