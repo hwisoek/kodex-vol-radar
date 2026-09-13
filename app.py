@@ -1112,39 +1112,35 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                         holding_period += 1
                         current_pnl = (curr_p - entry_price) / entry_price
 
-                        # 1) 상단 밴드 터치 시 50% 분할 익절 (원래대로 상단 터치 즉시 확보)
+                        # 1) 상단 밴드 터치 시 50% 분할 익절 확보
                         if not has_taken_tp1 and (curr_p >= dyn_upper[i]):
                             has_taken_tp1 = True
                             tp1_pnl = float(current_pnl)
-                            tp1_bar = holding_period
 
-                        # 2) 전량 청산: 1차 익절 후 3봉 이상 지난 뒤, 20일선(c_ma20) 아래로 완전히 꺾일 때
-                        is_trend_exit = has_taken_tp1 and (holding_period > tp1_bar + 3) and (curr_p < c_ma20)
-                        
-                        # 손실 중 변동성 폭발 대피 (수익 중일 때는 폭발해도 홀딩)
-                        is_spike = (curr_sigma >= rv_threshold) and (current_pnl < 0)
+                        # 2) 전량 청산 조건
+                        # - 1차 익절 후: 주가가 10선 중심선(mid_line) 아래로 밀려 추세가 꺾일 때
+                        # - 익절 전: 변동성 폭발(is_spike) 또는 최대 보유기간 초과(is_timeout)
+                        is_trend_exit = has_taken_tp1 and (curr_p < mid_line[i])
+                        is_spike = curr_sigma >= rv_threshold
                         is_timeout = holding_period >= max_holding_bars
 
                         if is_trend_exit or is_spike or is_timeout:
                             if is_timeout:
                                 time_over_count += 1
 
+                            # 1차 익절을 했으면 (1차 수익 50% + 최종 청산 수익 50%) 합산
                             if has_taken_tp1:
-                                gross_pnl = (tp1_pnl * 0.5) + (float(current_pnl) * 0.5)
+                                final_pnl = (tp1_pnl * 0.5) + (float(current_pnl) * 0.5)
                             else:
-                                gross_pnl = float(current_pnl)
+                                final_pnl = float(current_pnl)
 
-                            # 실전 거래 비용 반영: 왕복 수수료 및 슬리피지 (-0.20%) 차감
-                            fee_rate = 0.0020
-                            net_final_pnl = gross_pnl - fee_rate
-
-                            trade_returns.append(net_final_pnl)
+                            trade_returns.append(final_pnl)
                             trade_log.append({
                                 "entry_time": entry_time,
                                 "entry_price": entry_price,
                                 "exit_time": h_data["times"][i],
                                 "exit_price": curr_p,
-                                "pnl": net_final_pnl,
+                                "pnl": final_pnl,
                             })
                             position = None
                 if position == "LONG":
