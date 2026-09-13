@@ -2291,9 +2291,9 @@ for tab, data in zip(tabs, display_targets):
                 st.markdown(
                     f"""
                     <div style="font-size: 12px; color: #334155; line-height: 1.5; background-color: #f8fafc; padding: 10px 14px; border-radius: 6px; border: 1px solid #e2e8f0; margin-top: 8px;">
-                        📌 <b>가이드 백테스팅 검증 요약:</b><br>
-                        - 최근 60일 1시간봉 기준 <b>지지선 반등 진입 $\\rightarrow$ 저항선 익절 / 손절(-1.5%)</b> 규칙 적용 시 총 <b>{N}회</b> 체결.<br>
-                        - 손익비 관리(칼손절) 반영 후 산출된 건당 평균 초과수익은 <b>{actual_mean * 100:+.2f}%</b>이며, 부트스트랩({B:,}회) 검정 p-value는 <b>{boot_p_val:.4f}</b>입니다.
+                        📌 <b>동적 분할 매매 백테스팅 검증 요약:</b><br>
+                        - 최근 60일 1시간봉 기준 <b>1차 50% 진입 $\\rightarrow$ -1.0% 눌림 시 2차 50% 매집 $\\rightarrow$ 상단 밴드 50% 분할 익절 $\\rightarrow$ 중심선 트레일링 청산</b> 규칙 적용 시 총 <b>{N}회</b> 체결.<br>
+                        - 실전 수수료/슬리피지(왕복 0.20%) 차감 후 건당 평균 초과수익은 <b>{actual_mean * 100:+.2f}%</b>이며, 부트스트랩({B:,}회) 검정 p-value는 <b>{boot_p_val:.4f}</b>입니다.
                     </div>
                     """,
                     unsafe_allow_html=True,
