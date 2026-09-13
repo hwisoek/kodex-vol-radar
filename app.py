@@ -1056,25 +1056,27 @@ def process_single_asset(asset_name, target_info, cached_data=None):
 
                 stop_loss_limit = -0.015
                 take_profit_target = 0.008
-                max_holding_bars = 60
+                max_holding_bars = 60  # 추세 유지를 위해 보유 한도를 60봉(약 1~2주)으로 확장
 
                 position = None
                 entry_price = 0.0
                 entry_time = ""
                 holding_period = 0
-                has_taken_tp1 = False
-                tp1_pnl = 0.0
-                tp1_bar = 0
+                has_taken_tp1 = False  # 1차 분할 익절 체크용
+                tp1_pnl = 0.0          # 1차 익절 시점 수익률
 
+                # 60일 장기 지표 계산을 위해 시작 인덱스를 60으로 설정
                 for i in range(60, len(h_prices)):
                     curr_p = h_prices[i]
                     prev_p = h_prices[i - 1]
                     curr_sigma = pred_sigmas[i]
 
+                    # 60일 거시 레짐 산출
                     c_ma20 = ma20_series[i]
                     c_ma60 = ma60_series[i]
+                    # 직전 5봉 전 60선 대비 현재 60선의 기울기(추세 강도)
                     ma60_prev5 = ma60_series[i - 5] if i >= 5 else c_ma60
-                    is_ma60_falling = c_ma60 < ma60_prev5 * 0.998
+                    is_ma60_falling = c_ma60 < ma60_prev5 * 0.998  # 60선이 확실히 우하향 중일 때만 진짜 하락장
 
                     c_high = rolling_high[i]
                     c_low = rolling_low[i]
@@ -1082,20 +1084,21 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                     macro_pos = np.clip(((curr_p - c_low) / c_spread) * 100.0, 0.0, 100.0)
 
                     is_bull = curr_p > c_ma20
+                    # 진짜 위험한 하락장: 60선 아래이면서 60선 자체가 가파르게 꺾여 내려갈 때
                     is_real_bear = (curr_p < c_ma60) and is_ma60_falling
 
-                    # 1. 안전한 눌림목 지지 반등 단일 진입
                     if position is None:
                         is_calm = curr_sigma < rv_threshold
                         touched_lower = prev_p <= dyn_lower[i - 1]
                         is_bullish_bounce = (curr_p >= prev_p * 1.002) and (curr_p > dyn_lower[i])
 
+                        # 🎯 스마트 레짐 필터
                         if is_real_bear:
-                            macro_allow = False              # 급락 우하향 추세는 완전 차단
+                            macro_allow = False              # 급락 우하향 추세만 완전 차단
                         elif is_bull:
-                            macro_allow = macro_pos <= 75.0  # 상승 추세 눌림목
+                            macro_allow = macro_pos <= 75.0  # 상승 추세: 상단 75%까지 눌림 매수 허용
                         else:
-                            macro_allow = macro_pos <= 60.0  # 횡보장 박스 하단
+                            macro_allow = macro_pos <= 60.0  # 횡보/완만 조정: 60% 이하 저점권 매수 허용
 
                         if is_calm and touched_lower and is_bullish_bounce and macro_allow:
                             position = "LONG"
@@ -1104,30 +1107,28 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                             holding_period = 0
                             has_taken_tp1 = False
                             tp1_pnl = 0.0
-                            tp1_bar = 0
 
-                    # 2. 현실적인 스윙 분할 청산 관리
                     elif position == "LONG":
                         holding_period += 1
                         current_pnl = (curr_p - entry_price) / entry_price
 
-                        # 1차 익절: 밴드 상단 터치 시 50% 물량 이익 확보
+                        # 1) 상단 밴드 터치 시 50% 분할 익절 확보
                         if not has_taken_tp1 and (curr_p >= dyn_upper[i]):
                             has_taken_tp1 = True
                             tp1_pnl = float(current_pnl)
-                            tp1_bar = holding_period
 
-                        # 2차 추세 청산: 1차 익절 후 20선 아래로 추세 꺾일 때 전량 청산
-                        is_trend_exit = has_taken_tp1 and (holding_period > tp1_bar + 3) and (curr_p < c_ma20)
-                        
-                        # 손실 방어: 마이너스 손실 중일 때만 변동성 폭발(급락/악재) 대피
-                        is_spike = (curr_sigma >= rv_threshold) and (current_pnl < 0)
+                        # 2) 전량 청산 조건
+                        # - 1차 익절 후: 주가가 10선 중심선(mid_line) 아래로 밀려 추세가 꺾일 때
+                        # - 익절 전: 변동성 폭발(is_spike) 또는 최대 보유기간 초과(is_timeout)
+                        is_trend_exit = has_taken_tp1 and (curr_p < mid_line[i])
+                        is_spike = curr_sigma >= rv_threshold
                         is_timeout = holding_period >= max_holding_bars
 
                         if is_trend_exit or is_spike or is_timeout:
                             if is_timeout:
                                 time_over_count += 1
 
+                            # 1차 익절을 했으면 (1차 수익 50% + 최종 청산 수익 50%) 합산
                             if has_taken_tp1:
                                 final_pnl = (tp1_pnl * 0.5) + (float(current_pnl) * 0.5)
                             else:
