@@ -1062,6 +1062,8 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                 avg_price = 0.0
                 holding_units = 0.0  # 0.5 (1차 매수) or 1.0 (2차 분할 매수 완료)
                 entry_time = ""
+                scale_in_time = ""   # 🎯 2차 매수 시점
+                scale_in_price = 0.0 # 🎯 2차 매수 가격
                 holding_period = 0
                 has_taken_tp1 = False
                 tp1_pnl = 0.0
@@ -1080,8 +1082,6 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                     macro_pos = np.clip(((curr_p - c_low) / c_spread) * 100.0, 0.0, 100.0)
 
                     is_bull = curr_p > c_ma20
-
-                    # 60선 기울기 및 대세 하락장 판별 복원
                     ma60_prev5 = ma60_series[i - 5] if i >= 5 else c_ma60
                     ma60_falling = c_ma60 < ma60_prev5 * 0.998
                     is_real_bear = (curr_p < c_ma60) and ma60_falling
@@ -1092,11 +1092,9 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                         touched_lower = prev_p <= dyn_lower[i - 1]
                         is_bullish_bounce = (curr_p >= prev_p * 1.002) and (curr_p > dyn_lower[i])
 
-                        # 최소 밴드 폭 필터 (1.5% 이상)
                         band_spread = (dyn_upper[i] - dyn_lower[i]) / curr_p
                         has_enough_spread = band_spread >= 0.015
 
-                        # 🎯 추세 필터: 60선 자체가 우하향으로 꺾인 대세 하락 종목만 원천 차단
                         if is_real_bear or ma60_falling:
                             macro_allow = False
                         elif is_bull:
@@ -1110,6 +1108,8 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                             avg_price = curr_p
                             holding_units = 0.5  # 1차 자본 50% 투입
                             entry_time = h_data["times"][i]
+                            scale_in_time = ""
+                            scale_in_price = 0.0
                             holding_period = 0
                             has_taken_tp1 = False
                             tp1_pnl = 0.0
@@ -1118,11 +1118,13 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                     elif position == "LONG":
                         holding_period += 1
 
-                        # 🎯 2차 매수 조건: 1차 진입 후 -1.0% 추가 눌림 발생 시 잔여 50% 추가 매수 (평단 인하)
+                        # 🎯 2차 매수 조건: -1.0% 추가 눌림 발생 시 잔여 50% 추가 매수 (시간/가격 기록)
                         if holding_units == 0.5 and not has_taken_tp1:
                             if curr_p <= first_entry_price * 0.990:
                                 avg_price = (first_entry_price + curr_p) / 2.0
                                 holding_units = 1.0
+                                scale_in_time = h_data["times"][i]
+                                scale_in_price = curr_p
 
                         current_pnl = (curr_p - avg_price) / avg_price
 
@@ -1150,7 +1152,9 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                             trade_returns.append(net_final_pnl)
                             trade_log.append({
                                 "entry_time": entry_time,
-                                "entry_price": avg_price,
+                                "entry_price": first_entry_price, # 1차 매수가
+                                "scale_in_time": scale_in_time,   # 2차 매수 시점
+                                "scale_in_price": scale_in_price, # 2차 매수가
                                 "exit_time": h_data["times"][i],
                                 "exit_price": curr_p,
                                 "pnl": net_final_pnl,
@@ -1944,11 +1948,14 @@ for tab, data in zip(tabs, display_targets):
                 # 2. 백테스트 체결 마커 및 음영
                 trade_log = data.get("trade_log", [])
                 if trade_log:
+                    # 0. 매수~매도 보유 구간 음영 표시
                     for idx, trade in enumerate(trade_log):
                         is_profit = trade["pnl"] > 0
                         fill_col = "rgba(239, 68, 68, 0.15)" if is_profit else "rgba(59, 130, 246, 0.15)"
                         line_col = "rgba(239, 68, 68, 0.3)" if is_profit else "rgba(59, 130, 246, 0.3)"
                         pos = "top left" if idx % 2 == 0 else "top right"
+
+                        scale_text = " (2차완료)" if trade.get("scale_in", False) else ""
 
                         fig_long.add_vrect(
                             x0=trade["entry_time"],
@@ -1958,7 +1965,7 @@ for tab, data in zip(tabs, display_targets):
                             layer="below",
                             line_width=1,
                             line_color=line_col,
-                            annotation_text=f"{'+' if is_profit else ''}{trade['pnl']*100:.1f}%",
+                            annotation_text=f"{'+' if is_profit else ''}{trade['pnl']*100:.1f}%{scale_text}",
                             annotation_position=pos,
                             annotation=dict(
                                 font=dict(size=9, color="#b91c1c" if is_profit else "#1d4ed8", family="Arial"),
@@ -1966,17 +1973,31 @@ for tab, data in zip(tabs, display_targets):
                             ),
                         )
 
+                    # 1. 1차 매수 진입 타점 (초록색 ▲)
                     buy_t = [t["entry_time"] for t in trade_log]
                     buy_p = [t["entry_price"] for t in trade_log]
                     fig_long.add_trace(go.Scatter(
                         x=buy_t,
                         y=buy_p,
                         mode="markers",
-                        name="매수 진입",
+                        name="1차 매수 (50%)",
                         marker=dict(symbol="triangle-up", size=11, color="#10b981", line=dict(width=1, color="#ffffff")),
-                        hovertemplate="<b>[매수]</b> %{y:,.2f}<br>일시: %{x}<extra></extra>"
+                        hovertemplate="<b>[1차 매수]</b> %{y:,.2f}<br>일시: %{x}<extra></extra>"
                     ))
 
+                    # 2. 🔥 [과거 타점] 2차 분할 매수 체결 타점 (주황색 ◆)
+                    scale_trades = [t for t in trade_log if t.get("scale_in", False) and t.get("scale_in_time")]
+                    if scale_trades:
+                        fig_long.add_trace(go.Scatter(
+                            x=[t["scale_in_time"] for t in scale_trades],
+                            y=[t["scale_in_price"] for t in scale_trades],
+                            mode="markers",
+                            name="2차 눌림 매수 (-1%)",
+                            marker=dict(symbol="diamond", size=11, color="#f59e0b", line=dict(width=1.5, color="#ffffff")),
+                            hovertemplate="<b>[2차 매수 체결]</b> %{y:,.2f}<br>일시: %{x}<extra></extra>"
+                        ))
+
+                    # 3. 익절 매도 타점 (빨간색 ▼)
                     win_trades = [t for t in trade_log if t["pnl"] > 0]
                     if win_trades:
                         fig_long.add_trace(go.Scatter(
@@ -1989,6 +2010,7 @@ for tab, data in zip(tabs, display_targets):
                             hovertemplate="<b>[익절]</b> %{y:,.2f} (+%{customdata:.2f}%)<br>일시: %{x}<extra></extra>"
                         ))
 
+                    # 4. 손절 매도 타점 (파란색 ▼)
                     loss_trades = [t for t in trade_log if t["pnl"] <= 0]
                     if loss_trades:
                         fig_long.add_trace(go.Scatter(
