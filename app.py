@@ -1646,46 +1646,51 @@ for tab, data in zip(tabs, display_targets):
                 " (추세 지속)</span>"
             )
 
-            # 2. 단기 액션 플랜 카드
-            st.markdown(
-                f"""
-                <div style="background-color: #ffffff; border: 1px solid #cbd5e1; border-top: none; border-radius: 0 0 8px 8px; padding: 16px; margin-bottom: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.03);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px; margin-bottom: 12px; flex-wrap: wrap;">
-                        <span style="font-size: 15px; font-weight: 800; color: {data['strategy_color']};">{data['strategy_title']}</span>
-                        <span style="font-size: 11px;">휩소: {whipsaw_badge}</span>
+            # --------------------------------------------------------------
+                # 상단 액션 플랜 카드 (원래 장기 가이드 복원 + 분할매매 수치 결합)
+                # --------------------------------------------------------------
+                st.markdown(
+                    f"""
+                    <div style="background-color: #ffffff; border: 1px solid #cbd5e1; border-top: none; border-radius: 0 0 8px 8px; padding: 16px; margin-bottom: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.03);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px; margin-bottom: 12px; flex-wrap: wrap;">
+                            <span style="font-size: 15px; font-weight: 800; color: {macro['color']};">{macro['title']}</span>
+                            <span style="font-size: 11px; color: #475569;">추세: <b>{macro['trend']}</b> | 권장: <b>{macro['action']}</b></span>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px; margin-bottom: 14px;">
+                            <div style="background-color: #f8fafc; padding: 7px 8px; border-radius: 6px; border-left: 3px solid #10b981; border: 1px solid #f1f5f9; border-left-width: 3px;">
+                                <div style="font-size: 10px; color: #64748b;">1차 진입 (50%)</div>
+                                <div style="font-size: 13px; font-weight: 800; color: #059669; margin-top: 2px;">{fmt(buy1_price)}</div>
+                            </div>
+                            <div style="background-color: #f8fafc; padding: 7px 8px; border-radius: 6px; border-left: 3px solid #065f46; border: 1px solid #f1f5f9; border-left-width: 3px;">
+                                <div style="font-size: 10px; color: #64748b;">2차 눌림매수 (-1%)</div>
+                                <div style="font-size: 13px; font-weight: 800; color: #047857; margin-top: 2px;">{fmt(buy2_price)}</div>
+                            </div>
+                            <div style="background-color: #f8fafc; padding: 7px 8px; border-radius: 6px; border-left: 3px solid #ef4444; border: 1px solid #f1f5f9; border-left-width: 3px;">
+                                <div style="font-size: 10px; color: #64748b;">1차 익절 (50%)</div>
+                                <div style="font-size: 13px; font-weight: 800; color: #dc2626; margin-top: 2px;">{fmt(tp1_target)}</div>
+                            </div>
+                            <div style="background-color: #f8fafc; padding: 7px 8px; border-radius: 6px; border-left: 3px solid #f59e0b; border: 1px solid #f1f5f9; border-left-width: 3px;">
+                                <div style="font-size: 10px; color: #64748b;">추세 중심 (익절보호)</div>
+                                <div style="font-size: 13px; font-weight: 800; color: #d97706; margin-top: 2px;">{fmt(tp2_trail)}</div>
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                            <div style="display: flex; justify-content: space-between; font-size: 11px; color: #64748b; margin-bottom: 4px;">
+                                <span>60일 최저점</span>
+                                <span style="font-weight: 700; color: #047857;">채널 내 위치: {macro['pos']:.1f}%</span>
+                                <span>60일 최고점</span>
+                            </div>
+                            <div style="width: 100%; background-color: #e2e8f0; border-radius: 4px; height: 6px; overflow: hidden;">
+                                <div style="width: {macro['pos']}%; background: linear-gradient(90deg, #10b981 0%, #0ea5e9 50%, #ef4444 100%); height: 100%;"></div>
+                            </div>
+                        </div>
+                        <div style="font-size: 12px; color: #334155; line-height: 1.5; background-color: #f0fdf4; padding: 8px 12px; border-radius: 6px; border: 1px solid #dcfce3;">
+                            📌 <b>장기 가이드:</b> {macro['desc']}
+                        </div>
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 14px;">
-                        <div style="background-color: #f8fafc; padding: 8px 10px; border-radius: 6px; border-left: 3px solid #ef4444; border: 1px solid #f1f5f9; border-left-width: 3px;">
-                            <div style="font-size: 10px; color: #64748b;">단기 저항 (목표가)</div>
-                            <div style="font-size: 14px; font-weight: 800; color: #dc2626; margin-top: 2px;">{upper_str}</div>
-                        </div>
-                        <div style="background-color: #f8fafc; padding: 8px 10px; border-radius: 6px; border-left: 3px solid #0ea5e9; border: 1px solid #f1f5f9; border-left-width: 3px;">
-                            <div style="font-size: 10px; color: #64748b;">1H 예상 진폭</div>
-                            <div style="font-size: 14px; font-weight: 800; color: #0284c7; margin-top: 2px;">±{range_str}</div>
-                        </div>
-                        <div style="background-color: #f8fafc; padding: 8px 10px; border-radius: 6px; border-left: 3px solid #10b981; border: 1px solid #f1f5f9; border-left-width: 3px;">
-                            <div style="font-size: 10px; color: #64748b;">단기 지지 (손절선)</div>
-                            <div style="font-size: 14px; font-weight: 800; color: #059669; margin-top: 2px;">{lower_str}</div>
-                        </div>
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                        <div style="display: flex; justify-content: space-between; font-size: 11px; color: #64748b; margin-bottom: 4px;">
-                            <span>2H 저점</span>
-                            <span style="font-weight: 700; color: #0284c7;">채널 내 위치: {channel_pos:.1f}%</span>
-                            <span>2H 고점</span>
-                        </div>
-                        <div style="width: 100%; background-color: #e2e8f0; border-radius: 4px; height: 6px; overflow: hidden;">
-                            <div style="width: {channel_pos}%; background: linear-gradient(90deg, #10b981 0%, #0ea5e9 50%, #ef4444 100%); height: 100%;"></div>
-                        </div>
-                    </div>
-                    <div style="font-size: 12px; color: #334155; line-height: 1.5; background-color: #f0fdf4; padding: 8px 12px; border-radius: 6px; border: 1px solid #dcfce3;">
-                        💡 <b>단기 가이드:</b> {data['strategy_desc']}
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
+                    """,
+                    unsafe_allow_html=True,
+                )
             # 3. 단기 시계열 차트
             is_kr_stock = target_info.get("currency", CURRENCY) == "원"
             if not is_open:
