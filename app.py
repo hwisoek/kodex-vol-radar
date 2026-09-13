@@ -1092,6 +1092,10 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                         touched_lower = prev_p <= dyn_lower[i - 1]
                         is_bullish_bounce = (curr_p >= prev_p * 1.002) and (curr_p > dyn_lower[i])
 
+                        # 🎯 최소 밴드 폭 필터: 밴드 상·하단 간격이 최소 1.5% 이상 확보된 자리만 진입
+                        band_spread = (dyn_upper[i] - dyn_lower[i]) / curr_p
+                        has_enough_spread = band_spread >= 0.015
+
                         # 🎯 스마트 레짐 필터
                         if is_real_bear:
                             macro_allow = False              # 급락 우하향 추세만 완전 차단
@@ -1100,7 +1104,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                         else:
                             macro_allow = macro_pos <= 60.0  # 횡보/완만 조정: 60% 이하 저점권 매수 허용
 
-                        if is_calm and touched_lower and is_bullish_bounce and macro_allow:
+                        if is_calm and touched_lower and is_bullish_bounce and macro_allow and has_enough_spread:
                             position = "LONG"
                             entry_price = curr_p
                             entry_time = h_data["times"][i]
@@ -1130,9 +1134,29 @@ def process_single_asset(asset_name, target_info, cached_data=None):
 
                             # 1차 익절을 했으면 (1차 수익 50% + 최종 청산 수익 50%) 합산
                             if has_taken_tp1:
-                                final_pnl = (tp1_pnl * 0.5) + (float(current_pnl) * 0.5)
+                                gross_pnl = (tp1_pnl * 0.5) + (float(current_pnl) * 0.5)
                             else:
-                                final_pnl = float(current_pnl)
+                                gross_pnl = float(current_pnl)
+
+                            # 🎯 실전 거래 비용 반영: 왕복 수수료 및 슬리피지 (-0.20%) 차감
+                            fee_rate = 0.0020
+                            net_final_pnl = gross_pnl - fee_rate
+
+                            trade_returns.append(net_final_pnl)
+                            trade_log.append({
+                                "entry_time": entry_time,
+                                "entry_price": entry_price,
+                                "exit_time": h_data["times"][i],
+                                "exit_price": curr_p,
+                                "pnl": net_final_pnl,
+                            })
+                            position = None
+
+                if position == "LONG":
+                    final_gross_pnl = (h_prices[-1] - entry_price) / entry_price
+                    fee_rate = 0.0020
+                    net_pnl = final_gross_pnl - fee_rate
+                    trade_returns.append(float(net_pnl))
 
                             trade_returns.append(final_pnl)
                             trade_log.append({
