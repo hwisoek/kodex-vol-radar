@@ -1090,9 +1090,9 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                         touched_lower = prev_p <= dyn_lower[i - 1]
                         is_bullish_bounce = (curr_p >= prev_p * 1.002) and (curr_p > dyn_lower[i])
 
-                        # 🎯 최소 밴드 폭 필터: 1.5% -> 1.2%로 살짝 완화 (수수료 0.2% 대비 6배 공간 확보하면서 표본 수 복원)
+                        # 🎯 최소 밴드 폭 필터: 
                         band_spread = (dyn_upper[i] - dyn_lower[i]) / curr_p
-                        has_enough_spread = band_spread >= 0.018
+                        has_enough_spread = band_spread >= 0.016
 
                         # 스마트 레짐 필터
                         if is_real_bear:
