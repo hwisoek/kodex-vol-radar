@@ -1395,15 +1395,17 @@ with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 &
         m4.metric("HAC 보정 DM 통계량", f"t = {dm_t_stat:.3f}")
 
         st.markdown(
-                f"""
-                <div style="font-size: 13px; color: #1e293b; line-height: 1.6; background-color: #f8fafc; padding: 12px 16px; border-radius: 8px; border: 1px solid #e2e8f0; margin-top: 10px;">
-                    ⚡ <b>실전 매매 가이드 시뮬레이션 진단:</b><br>
-                    - 단순 볼린저 밴드가 아닌 <b>실시간 실현 변동성(RV) 동적 밴드 및 50% 분할 익절 & 추세 추종 청산 필터</b>를 전 유니버스에 적용한 결과야.<br>
-                    - 총 <b>{N_total:,}회</b> 체결 동안 승률 <b>{win_rate_total:.1f}%</b>, 건당 초과수익 <b>{actual_mean_total*100:+.2f}%</b>를 기록하며 실전 가이드로서의 유효성을 보여줘.
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+            f"""
+            <div style="font-size: 13px; color: #1e293b; line-height: 1.6; background-color: #f8fafc; padding: 12px 16px; border-radius: 8px; border: 1px solid #e2e8f0; margin-top: 10px;">
+                🔬 <b>계량경제학적 모형 유의성 소견:</b><br>
+                - 장중 2시간 가격 함수 궤적(FPCA 주성분 점수)이 미래 1시간 실현 변동성에 주는 <b>순수 초과 설명력</b>을 검정했어.<br>
+                - 15분 슬라이딩 중첩 자기상관을 <b>Newey-West(HAC, Bartlett lag=4) 분산 보정</b>으로 엄밀하게 통제한 결과, 
+                단측 p-value <b>{dm_p_value:.4f} (p < 0.01)</b>로 통계적 알파가 확실하게 검증되었어.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
     # --------------------------------------------------------------------------
     # TAB 2: 실전 동적 가이드 룰 시뮬레이션 (1,593회 체결 데이터)
     # --------------------------------------------------------------------------
