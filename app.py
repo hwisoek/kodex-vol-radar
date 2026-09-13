@@ -1056,27 +1056,25 @@ def process_single_asset(asset_name, target_info, cached_data=None):
 
                 stop_loss_limit = -0.015
                 take_profit_target = 0.008
-                max_holding_bars = 60  # 추세 유지를 위해 보유 한도를 60봉(약 1~2주)으로 확장
+                max_holding_bars = 60
 
                 position = None
                 entry_price = 0.0
                 entry_time = ""
                 holding_period = 0
-                has_taken_tp1 = False  # 1차 분할 익절 체크용
-                tp1_pnl = 0.0          # 1차 익절 시점 수익률
+                has_taken_tp1 = False
+                tp1_pnl = 0.0
+                tp1_bar = 0
 
-                # 60일 장기 지표 계산을 위해 시작 인덱스를 60으로 설정
                 for i in range(60, len(h_prices)):
                     curr_p = h_prices[i]
                     prev_p = h_prices[i - 1]
                     curr_sigma = pred_sigmas[i]
 
-                    # 60일 거시 레짐 산출
                     c_ma20 = ma20_series[i]
                     c_ma60 = ma60_series[i]
-                    # 직전 5봉 전 60선 대비 현재 60선의 기울기(추세 강도)
                     ma60_prev5 = ma60_series[i - 5] if i >= 5 else c_ma60
-                    is_ma60_falling = c_ma60 < ma60_prev5 * 0.998  # 60선이 확실히 우하향 중일 때만 진짜 하락장
+                    is_ma60_falling = c_ma60 < ma60_prev5 * 0.998
 
                     c_high = rolling_high[i]
                     c_low = rolling_low[i]
@@ -1084,60 +1082,45 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                     macro_pos = np.clip(((curr_p - c_low) / c_spread) * 100.0, 0.0, 100.0)
 
                     is_bull = curr_p > c_ma20
-                    # 진짜 위험한 하락장: 60선 아래이면서 60선 자체가 가파르게 꺾여 내려갈 때
                     is_real_bear = (curr_p < c_ma60) and is_ma60_falling
 
+                    # 1. 안전한 눌림목 지지 반등 단일 진입
                     if position is None:
                         is_calm = curr_sigma < rv_threshold
-
-                        # ------------------------------------------------------
-                        # [경로 A] 박스권/눌림목: 하단 밴드 지지 반등
-                        # ------------------------------------------------------
                         touched_lower = prev_p <= dyn_lower[i - 1]
                         is_bullish_bounce = (curr_p >= prev_p * 1.002) and (curr_p > dyn_lower[i])
-                        signal_dip_buy = touched_lower and is_bullish_bounce
 
-                        # ------------------------------------------------------
-                        # [경로 B] 대세 상승 초입: 20선 돌파 & 모멘텀 탑승 (달리는 말 올라타기)
-                        # ------------------------------------------------------
-                        # 조건: 직전 봉은 20선 아래/부근 -> 현재 봉에서 20선을 강하게 상향 돌파
-                        #       + 10선(중심선) 위 안착 + 채널 바닥을 벗어난 중상단 시세 분출 초입
-                        crossed_ma20 = (prev_p <= ma20_series[i - 1]) and (curr_p > c_ma20 * 1.003)
-                        is_momentum_up = (curr_p > mid_line[i]) and (macro_pos >= 25.0) and (macro_pos <= 80.0)
-                        signal_breakout = crossed_ma20 and is_momentum_up
-
-                        # 🎯 스마트 레짐 필터
                         if is_real_bear:
-                            macro_allow = False              # 급락 우하향 추세만 완전 차단
+                            macro_allow = False              # 급락 우하향 추세는 완전 차단
                         elif is_bull:
-                            macro_allow = macro_pos <= 80.0  # 상승 추세: 상단 80%까지 적극 진입
+                            macro_allow = macro_pos <= 75.0  # 상승 추세 눌림목
                         else:
-                            macro_allow = macro_pos <= 60.0  # 횡보장: 60% 이하 저점/중심권 진입
+                            macro_allow = macro_pos <= 60.0  # 횡보장 박스 하단
 
-                        # 두 경로 중 하나라도 시그널이 뜨고 레짐 필터를 통과하면 진입
-                        if is_calm and (signal_dip_buy or signal_breakout) and macro_allow:
+                        if is_calm and touched_lower and is_bullish_bounce and macro_allow:
                             position = "LONG"
                             entry_price = curr_p
                             entry_time = h_data["times"][i]
                             holding_period = 0
                             has_taken_tp1 = False
                             tp1_pnl = 0.0
+                            tp1_bar = 0
 
+                    # 2. 현실적인 스윙 분할 청산 관리
                     elif position == "LONG":
                         holding_period += 1
                         current_pnl = (curr_p - entry_price) / entry_price
 
-                        # 1) 상단 밴드 터치 시 50% 분할 익절 확보
+                        # 1차 익절: 밴드 상단 터치 시 50% 물량 이익 확보
                         if not has_taken_tp1 and (curr_p >= dyn_upper[i]):
                             has_taken_tp1 = True
                             tp1_pnl = float(current_pnl)
                             tp1_bar = holding_period
 
-                        # 2) 전량 청산 조건
-                        # - 1차 익절 후: 20선(c_ma20)을 종가로 깰 때 진짜 추세 이탈
+                        # 2차 추세 청산: 1차 익절 후 20선 아래로 추세 꺾일 때 전량 청산
                         is_trend_exit = has_taken_tp1 and (holding_period > tp1_bar + 3) and (curr_p < c_ma20)
                         
-                        # 🎯 변동성 폭발: '마이너스 손실 중'에 터지는 악재/급락일 때만 대피! (상승 랠리 불꽃놀이는 홀딩)
+                        # 손실 방어: 마이너스 손실 중일 때만 변동성 폭발(급락/악재) 대피
                         is_spike = (curr_sigma >= rv_threshold) and (current_pnl < 0)
                         is_timeout = holding_period >= max_holding_bars
 
