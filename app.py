@@ -1056,7 +1056,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
 
                 stop_loss_limit = -0.015
                 take_profit_target = 0.008
-                max_holding_bars = 60  # 추세 유지를 위해 보유 한도를 60봉(약 1~2주)으로 확장
+                max_holding_bars = 50  # 추세 유지를 위해 보유 한도를 50봉
 
                 position = None
                 entry_price = 0.0
