@@ -1088,11 +1088,11 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                         # - 횡보장: 박스권 하단 지지(macro_pos <= 35) 매수 허용
                         # - 하락 추세(역배열): 칼날 잡기 금지 (macro_pos < 10 극단 패닉셀 바닥에서만 허용)
                         if is_bull:
-                            macro_allow = macro_pos <= 60.0
+                            macro_allow = macro_pos <= 70.0
                         elif is_bear:
-                            macro_allow = macro_pos < 10.0
+                            macro_allow = False
                         else:
-                            macro_allow = macro_pos <= 35.0
+                            macro_allow = macro_pos <= 50.0
 
                         if is_calm and touched_lower and is_bullish_bounce and macro_allow:
                             position = "LONG"
