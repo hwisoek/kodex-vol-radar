@@ -1113,7 +1113,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                         current_pnl = (curr_p - entry_price) / entry_price
 
                         # 1) 상단 밴드 터치 시 50% 분할 익절 확보
-                        if not has_taken_tp1 and (curr_p >= dyn_upper[i]):
+                        if not has_taken_tp1 and (curr_p >= dyn_upper[i]) and (current_pnl >= 0.008):
                             has_taken_tp1 = True
                             tp1_pnl = float(current_pnl)
 
