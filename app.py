@@ -1024,7 +1024,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
             risk_score, channel_pos, rr_ratio, is_whipsaw_risk, trend_intensity
         )
 
-        # 60일 1시간봉 기반 백테스팅 연산
+        # 60일 1시간봉 기반 백테스팅 연산 (2차 분할 매수 + 60선 필터 엔진)
         trade_returns = []
         time_over_count = 0
         trade_log = []
@@ -1054,28 +1054,25 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                 rolling_high = s_prices.rolling(60).max().values
                 rolling_low = s_prices.rolling(60).min().values
 
-                stop_loss_limit = -0.015
-                take_profit_target = 0.008
-                max_holding_bars = 60  # 추세 유지를 위해 보유 한도를 60봉
+                max_holding_bars = 20
+                fee_rate = 0.0020  # 실전 왕복 수수료 및 슬리피지 0.20% 차감
 
                 position = None
-                entry_price = 0.0
+                first_entry_price = 0.0
+                avg_price = 0.0
+                holding_units = 0.0  # 0.5 (1차 매수) or 1.0 (2차 분할 매수 완료)
                 entry_time = ""
                 holding_period = 0
-                has_taken_tp1 = False  # 1차 분할 익절 체크용
-                tp1_pnl = 0.0          # 1차 익절 시점 수익률
+                has_taken_tp1 = False
+                tp1_pnl = 0.0
 
-                # 60일 장기 지표 계산을 위해 시작 인덱스를 60으로 설정
                 for i in range(60, len(h_prices)):
                     curr_p = h_prices[i]
                     prev_p = h_prices[i - 1]
                     curr_sigma = pred_sigmas[i]
 
-                    # 60일 거시 레짐 산출
                     c_ma20 = ma20_series[i]
                     c_ma60 = ma60_series[i]
-                    ma60_prev5 = ma60_series[i - 5] if i >= 5 else c_ma60
-                    is_ma60_falling = c_ma60 < ma60_prev5 * 0.998  # 60선 우하향 판별
 
                     c_high = rolling_high[i]
                     c_low = rolling_low[i]
@@ -1083,19 +1080,19 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                     macro_pos = np.clip(((curr_p - c_low) / c_spread) * 100.0, 0.0, 100.0)
 
                     is_bull = curr_p > c_ma20
-                    is_real_bear = (curr_p < c_ma60) and is_ma60_falling
 
+                    # 1) 미보유 상태: 1차 50% 분할 매수 진입 검토
                     if position is None:
                         is_calm = curr_sigma < rv_threshold
                         touched_lower = prev_p <= dyn_lower[i - 1]
                         is_bullish_bounce = (curr_p >= prev_p * 1.002) and (curr_p > dyn_lower[i])
 
-                        # 🎯 최소 밴드 폭 필터: 
+                        # 최소 밴드 폭 필터 (1.5% 이상)
                         band_spread = (dyn_upper[i] - dyn_lower[i]) / curr_p
                         has_enough_spread = band_spread >= 0.015
 
-                        # 스마트 레짐 필터
-                        if is_real_bear:
+                        # 🎯 60선 역배열 배제 필터
+                        if curr_p < c_ma60:
                             macro_allow = False
                         elif is_bull:
                             macro_allow = macro_pos <= 75.0
@@ -1104,22 +1101,32 @@ def process_single_asset(asset_name, target_info, cached_data=None):
 
                         if is_calm and touched_lower and is_bullish_bounce and macro_allow and has_enough_spread:
                             position = "LONG"
-                            entry_price = curr_p
+                            first_entry_price = curr_p
+                            avg_price = curr_p
+                            holding_units = 0.5  # 1차 자본 50% 투입
                             entry_time = h_data["times"][i]
                             holding_period = 0
                             has_taken_tp1 = False
                             tp1_pnl = 0.0
 
+                    # 2) 보유 상태: 2차 분할 매수 및 익절/청산 관리
                     elif position == "LONG":
                         holding_period += 1
-                        current_pnl = (curr_p - entry_price) / entry_price
 
-                        # 1) 상단 밴드 터치 시 50% 분할 익절 확보
+                        # 🎯 2차 매수 조건: 1차 진입 후 -1.0% 추가 눌림 발생 시 잔여 50% 추가 매수 (평단 인하)
+                        if holding_units == 0.5 and not has_taken_tp1:
+                            if curr_p <= first_entry_price * 0.990:
+                                avg_price = (first_entry_price + curr_p) / 2.0
+                                holding_units = 1.0
+
+                        current_pnl = (curr_p - avg_price) / avg_price
+
+                        # 상단 밴드 도달 시 50% 분할 익절
                         if not has_taken_tp1 and (curr_p >= dyn_upper[i]):
                             has_taken_tp1 = True
                             tp1_pnl = float(current_pnl)
 
-                        # 2) 전량 청산 조건
+                        # 전량 청산 조건
                         is_trend_exit = has_taken_tp1 and (curr_p < mid_line[i])
                         is_spike = curr_sigma >= rv_threshold
                         is_timeout = holding_period >= max_holding_bars
@@ -1133,24 +1140,22 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                             else:
                                 gross_pnl = float(current_pnl)
 
-                            # 🎯 실전 거래 비용 반영: 왕복 수수료 및 슬리피지 (-0.20%) 차감
-                            fee_rate = 0.0020
                             net_final_pnl = gross_pnl - fee_rate
 
                             trade_returns.append(net_final_pnl)
                             trade_log.append({
                                 "entry_time": entry_time,
-                                "entry_price": entry_price,
+                                "entry_price": avg_price,
                                 "exit_time": h_data["times"][i],
                                 "exit_price": curr_p,
                                 "pnl": net_final_pnl,
+                                "scale_in": holding_units == 1.0
                             })
                             position = None
 
-                # 시뮬레이션 종료 시점에 아직 보유 중인 미청산 포지션 수수료 반영
+                # 백테스팅 종료 시점 미청산 잔여분 처리
                 if position == "LONG":
-                    final_gross_pnl = (h_prices[-1] - entry_price) / entry_price
-                    fee_rate = 0.0020
+                    final_gross_pnl = (h_prices[-1] - avg_price) / avg_price
                     net_pnl = final_gross_pnl - fee_rate
                     trade_returns.append(float(net_pnl))
 
