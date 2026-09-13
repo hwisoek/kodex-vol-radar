@@ -1598,6 +1598,7 @@ for tab, data in zip(tabs, display_targets):
         )
 
         # ----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
         # 좌우 2열 분할 레이아웃 (좌: 단기 전략 / 우: 장기 전략)
         # ----------------------------------------------------------------------
         col_short, col_long = st.columns(2, gap="large")
@@ -1639,58 +1640,51 @@ for tab, data in zip(tabs, display_targets):
                 else f"${expected_range_value:.2f}"
             )
             whipsaw_badge = (
-                '<span style="color:#dc2626; font-weight:bold;">⚠️ 주의 (급반전'
-                " 위험)</span>"
+                '<span style="color:#dc2626; font-weight:bold;">⚠️ 주의 (급반전 위험)</span>'
                 if is_whipsaw_risk
-                else '<span style="color:#059669; font-weight:bold;">✅ 안정'
-                " (추세 지속)</span>"
+                else '<span style="color:#059669; font-weight:bold;">✅ 안정 (추세 지속)</span>'
             )
 
-            # --------------------------------------------------------------
-                # 상단 액션 플랜 카드 (원래 장기 가이드 복원 + 분할매매 수치 결합)
-                # --------------------------------------------------------------
-                st.markdown(
-                    f"""
-                    <div style="background-color: #ffffff; border: 1px solid #cbd5e1; border-top: none; border-radius: 0 0 8px 8px; padding: 16px; margin-bottom: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.03);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px; margin-bottom: 12px; flex-wrap: wrap;">
-                            <span style="font-size: 15px; font-weight: 800; color: {macro['color']};">{macro['title']}</span>
-                            <span style="font-size: 11px; color: #475569;">추세: <b>{macro['trend']}</b> | 권장: <b>{macro['action']}</b></span>
+            # 2. 단기 액션 플랜 카드
+            st.markdown(
+                f"""
+                <div style="background-color: #ffffff; border: 1px solid #cbd5e1; border-top: none; border-radius: 0 0 8px 8px; padding: 16px; margin-bottom: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.03);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px; margin-bottom: 12px; flex-wrap: wrap;">
+                        <span style="font-size: 15px; font-weight: 800; color: {data['strategy_color']};">{data['strategy_title']}</span>
+                        <span style="font-size: 11px;">휩소: {whipsaw_badge}</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 14px;">
+                        <div style="background-color: #f8fafc; padding: 8px 10px; border-radius: 6px; border-left: 3px solid #ef4444; border: 1px solid #f1f5f9; border-left-width: 3px;">
+                            <div style="font-size: 10px; color: #64748b;">단기 저항 (목표가)</div>
+                            <div style="font-size: 14px; font-weight: 800; color: #dc2626; margin-top: 2px;">{upper_str}</div>
                         </div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px; margin-bottom: 14px;">
-                            <div style="background-color: #f8fafc; padding: 7px 8px; border-radius: 6px; border-left: 3px solid #10b981; border: 1px solid #f1f5f9; border-left-width: 3px;">
-                                <div style="font-size: 10px; color: #64748b;">1차 진입 (50%)</div>
-                                <div style="font-size: 13px; font-weight: 800; color: #059669; margin-top: 2px;">{fmt(buy1_price)}</div>
-                            </div>
-                            <div style="background-color: #f8fafc; padding: 7px 8px; border-radius: 6px; border-left: 3px solid #065f46; border: 1px solid #f1f5f9; border-left-width: 3px;">
-                                <div style="font-size: 10px; color: #64748b;">2차 눌림매수 (-1%)</div>
-                                <div style="font-size: 13px; font-weight: 800; color: #047857; margin-top: 2px;">{fmt(buy2_price)}</div>
-                            </div>
-                            <div style="background-color: #f8fafc; padding: 7px 8px; border-radius: 6px; border-left: 3px solid #ef4444; border: 1px solid #f1f5f9; border-left-width: 3px;">
-                                <div style="font-size: 10px; color: #64748b;">1차 익절 (50%)</div>
-                                <div style="font-size: 13px; font-weight: 800; color: #dc2626; margin-top: 2px;">{fmt(tp1_target)}</div>
-                            </div>
-                            <div style="background-color: #f8fafc; padding: 7px 8px; border-radius: 6px; border-left: 3px solid #f59e0b; border: 1px solid #f1f5f9; border-left-width: 3px;">
-                                <div style="font-size: 10px; color: #64748b;">추세 중심 (익절보호)</div>
-                                <div style="font-size: 13px; font-weight: 800; color: #d97706; margin-top: 2px;">{fmt(tp2_trail)}</div>
-                            </div>
+                        <div style="background-color: #f8fafc; padding: 8px 10px; border-radius: 6px; border-left: 3px solid #0ea5e9; border: 1px solid #f1f5f9; border-left-width: 3px;">
+                            <div style="font-size: 10px; color: #64748b;">1H 예상 진폭</div>
+                            <div style="font-size: 14px; font-weight: 800; color: #0284c7; margin-top: 2px;">±{range_str}</div>
                         </div>
-                        <div style="margin-bottom: 10px;">
-                            <div style="display: flex; justify-content: space-between; font-size: 11px; color: #64748b; margin-bottom: 4px;">
-                                <span>60일 최저점</span>
-                                <span style="font-weight: 700; color: #047857;">채널 내 위치: {macro['pos']:.1f}%</span>
-                                <span>60일 최고점</span>
-                            </div>
-                            <div style="width: 100%; background-color: #e2e8f0; border-radius: 4px; height: 6px; overflow: hidden;">
-                                <div style="width: {macro['pos']}%; background: linear-gradient(90deg, #10b981 0%, #0ea5e9 50%, #ef4444 100%); height: 100%;"></div>
-                            </div>
-                        </div>
-                        <div style="font-size: 12px; color: #334155; line-height: 1.5; background-color: #f0fdf4; padding: 8px 12px; border-radius: 6px; border: 1px solid #dcfce3;">
-                            📌 <b>장기 가이드:</b> {macro['desc']}
+                        <div style="background-color: #f8fafc; padding: 8px 10px; border-radius: 6px; border-left: 3px solid #10b981; border: 1px solid #f1f5f9; border-left-width: 3px;">
+                            <div style="font-size: 10px; color: #64748b;">단기 지지 (손절선)</div>
+                            <div style="font-size: 14px; font-weight: 800; color: #059669; margin-top: 2px;">{lower_str}</div>
                         </div>
                     </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                    <div style="margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 11px; color: #64748b; margin-bottom: 4px;">
+                            <span>2H 저점</span>
+                            <span style="font-weight: 700; color: #0284c7;">채널 내 위치: {channel_pos:.1f}%</span>
+                            <span>2H 고점</span>
+                        </div>
+                        <div style="width: 100%; background-color: #e2e8f0; border-radius: 4px; height: 6px; overflow: hidden;">
+                            <div style="width: {channel_pos}%; background: linear-gradient(90deg, #10b981 0%, #0ea5e9 50%, #ef4444 100%); height: 100%;"></div>
+                        </div>
+                    </div>
+                    <div style="font-size: 12px; color: #334155; line-height: 1.5; background-color: #f0fdf4; padding: 8px 12px; border-radius: 6px; border: 1px solid #dcfce3;">
+                        💡 <b>단기 가이드:</b> {data['strategy_desc']}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
             # 3. 단기 시계열 차트
             is_kr_stock = target_info.get("currency", CURRENCY) == "원"
             if not is_open:
@@ -1699,16 +1693,12 @@ for tab, data in zip(tabs, display_targets):
                     hour=close_h, minute=close_m, second=0, microsecond=0
                 )
                 time_labels = [
-                    (base_dt - timedelta(minutes=(23 - i) * 5)).strftime(
-                        "%H:%M"
-                    )
+                    (base_dt - timedelta(minutes=(23 - i) * 5)).strftime("%H:%M")
                     for i in range(24)
                 ]
                 last_time_label = time_labels[-1]
                 next_open_str = "익일 09:30" if is_kr_stock else "익일 10:00"
-                next_open_plus_str = (
-                    "익일 10:00" if is_kr_stock else "익일 10:30"
-                )
+                next_open_plus_str = "익일 10:00" if is_kr_stock else "익일 10:30"
                 future_labels = [
                     last_time_label,
                     f"{next_open_str} (예측)",
@@ -1720,9 +1710,7 @@ for tab, data in zip(tabs, display_targets):
                     minute=(now.minute // 5) * 5, second=0, microsecond=0
                 )
                 time_labels = [
-                    (base_dt - timedelta(minutes=(23 - i) * 5)).strftime(
-                        "%H:%M"
-                    )
+                    (base_dt - timedelta(minutes=(23 - i) * 5)).strftime("%H:%M")
                     for i in range(24)
                 ]
                 last_time_label = time_labels[-1]
@@ -1812,7 +1800,7 @@ for tab, data in zip(tabs, display_targets):
                     tickmode="array",
                     tickvals=custom_ticks,
                     gridcolor="#f1f5f9",
-                    tickangle=-30, # 라벨 겹침 방지 각도 조정
+                    tickangle=-30,
                 ),
                 yaxis=dict(title=f"가격 ({CURRENCY})", gridcolor="#f1f5f9"),
                 plot_bgcolor="#ffffff",
@@ -1833,7 +1821,7 @@ for tab, data in zip(tabs, display_targets):
             st.plotly_chart(fig_short, use_container_width=True)
 
         # ======================================================================
-        # [RIGHT] 장기 전략 (1시간봉 / 60일·5D 스윙 프레임) - 분할매매 가이드 반영 버전
+        # [RIGHT] 장기 전략 (1시간봉 / 60일·5D 스윙 프레임)
         # ======================================================================
         with col_long:
             st.markdown(
@@ -1848,7 +1836,6 @@ for tab, data in zip(tabs, display_targets):
 
             trading_h = float(target_info.get("trading_hours", 6.5))
             
-            # 💡 [핵심 최적화] API를 다시 찌르지 않고, 이미 메인 스캔 때 캐시된 1시간봉 데이터가 있다면 활용
             if "h_data_cache" not in st.session_state:
                 st.session_state["h_data_cache"] = {}
                 
@@ -1866,22 +1853,17 @@ for tab, data in zip(tabs, display_targets):
             )
 
             if macro is not None:
-                # --------------------------------------------------------------
-                # 🎯 알고리즘 기반 분할 매수 / 분할 익절 핵심 가격 계산
-                # --------------------------------------------------------------
+                # 분할 매매 핵심 가격 계산
                 buy1_price = float(current_price)
-                buy2_price = float(buy1_price * 0.990)  # -1.0% 추가 눌림 발생 시 2차 50% 투입
+                buy2_price = float(buy1_price * 0.990)
                 avg_entry_price = float((buy1_price + buy2_price) / 2.0)
-                tp1_target = float(macro["res_5d"])     # 5일 예상 상단 저항선 (1차 50% 분할 익절선)
-                tp2_trail = float((avg_entry_price + tp1_target) / 2.0)  # 추세 중심 익절 보호선
-                stop_target = float(macro["sup_5d"])   # 5일 통계적 하한 지지선
+                tp1_target = float(macro["res_5d"])
+                tp2_trail = float((avg_entry_price + tp1_target) / 2.0)
 
                 def fmt(val):
                     return f"{int(round(val)):,}원" if CURRENCY == "원" else f"${val:.2f}"
 
-                # --------------------------------------------------------------
-                # 상단 액션 플랜 카드 (분할 매매 로드맵 4단 수치 배치)
-                # --------------------------------------------------------------
+                # 1. 상단 액션 플랜 카드 (원래 장기 가이드 desc 복원)
                 st.markdown(
                     f"""
                     <div style="background-color: #ffffff; border: 1px solid #cbd5e1; border-top: none; border-radius: 0 0 8px 8px; padding: 16px; margin-bottom: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.03);">
@@ -1918,7 +1900,7 @@ for tab, data in zip(tabs, display_targets):
                             </div>
                         </div>
                         <div style="font-size: 12px; color: #334155; line-height: 1.5; background-color: #f0fdf4; padding: 8px 12px; border-radius: 6px; border: 1px solid #dcfce3;">
-                            📌 <b>분할 실행 룰:</b> 1차 진입 후 -1% 추가 하락 시 2차 50% 추가 매집 ➔ 상단 저항선 도달 시 50% 확정 익절 ➔ 잔여 물량은 추세 중심선 이탈 시 전량 정리.
+                            📌 <b>장기 가이드:</b> {macro['desc']}
                         </div>
                     </div>
                     """,
@@ -1927,8 +1909,9 @@ for tab, data in zip(tabs, display_targets):
 
                 h_closes = h_data["close"]
                 h_times = h_data["times"]
+                last_h_time = h_times[-1]
 
-                future_days = ["현재", "D+1", "D+2", "D+3", "D+4", "D+5"]
+                future_labels_swing = [last_h_time, "D+1", "D+2", "D+3", "D+4", "D+5"]
                 future_upper_swing = [current_price]
                 future_lower_swing = [current_price]
 
@@ -1941,7 +1924,7 @@ for tab, data in zip(tabs, display_targets):
 
                 fig_long = go.Figure()
                 
-                # 1. 60일 종가 궤적
+                # 60일 종가
                 fig_long.add_trace(go.Scatter(
                     x=h_times, 
                     y=h_closes, 
@@ -1953,7 +1936,6 @@ for tab, data in zip(tabs, display_targets):
                 # 2. 백테스트 체결 마커 및 음영
                 trade_log = data.get("trade_log", [])
                 if trade_log:
-                    # 0. 매수~매도 보유 구간 음영 표시 (1차 기본 음영 + 2차 매수 주황색 하이라이트)
                     for idx, trade in enumerate(trade_log):
                         is_profit = trade["pnl"] > 0
                         fill_col = "rgba(239, 68, 68, 0.15)" if is_profit else "rgba(59, 130, 246, 0.15)"
@@ -1962,7 +1944,7 @@ for tab, data in zip(tabs, display_targets):
 
                         scale_text = " (2차완료)" if trade.get("scale_in", False) else ""
 
-                        # 1) 기본 보유 구간 전체 음영 (1차 진입 ~ 청산)
+                        # 기본 보유 구간 음영
                         fig_long.add_vrect(
                             x0=trade["entry_time"],
                             x1=trade["exit_time"],
@@ -1979,12 +1961,12 @@ for tab, data in zip(tabs, display_targets):
                             ),
                         )
 
-                        # 2) 🔥 [핵심 추가] 2차 매수 체결 구간 주황색 하이라이트 음영 (2차 진입 ~ 청산)
+                        # 2차 매수 발생 구간 주황색 음영 띠
                         if trade.get("scale_in", False) and trade.get("scale_in_time"):
                             fig_long.add_vrect(
                                 x0=trade["scale_in_time"],
                                 x1=trade["exit_time"],
-                                fillcolor="rgba(245, 158, 11, 0.28)",  # 선명한 주황색 띠
+                                fillcolor="rgba(245, 158, 11, 0.28)",
                                 opacity=1.0,
                                 layer="below",
                                 line_width=1.5,
@@ -1998,7 +1980,7 @@ for tab, data in zip(tabs, display_targets):
                                 ),
                             )
 
-                    # 1. 1차 매수 진입 타점 (초록색 ▲)
+                    # 1차 매수 진입 타점 (▲)
                     buy_t = [t["entry_time"] for t in trade_log]
                     buy_p = [t["entry_price"] for t in trade_log]
                     fig_long.add_trace(go.Scatter(
@@ -2010,7 +1992,7 @@ for tab, data in zip(tabs, display_targets):
                         hovertemplate="<b>[1차 매수]</b> %{y:,.2f}<br>일시: %{x}<extra></extra>"
                     ))
 
-                    # 2. 🔥 [과거 타점] 2차 분할 매수 체결 타점 (주황색 ◆)
+                    # 2차 눌림 매수 타점 (◆)
                     scale_trades = [t for t in trade_log if t.get("scale_in", False) and t.get("scale_in_time")]
                     if scale_trades:
                         fig_long.add_trace(go.Scatter(
@@ -2022,7 +2004,7 @@ for tab, data in zip(tabs, display_targets):
                             hovertemplate="<b>[2차 매수 체결]</b> %{y:,.2f}<br>일시: %{x}<extra></extra>"
                         ))
 
-                    # 3. 익절 매도 타점 (빨간색 ▼)
+                    # 익절 매도 타점 (▼)
                     win_trades = [t for t in trade_log if t["pnl"] > 0]
                     if win_trades:
                         fig_long.add_trace(go.Scatter(
@@ -2035,7 +2017,7 @@ for tab, data in zip(tabs, display_targets):
                             hovertemplate="<b>[익절]</b> %{y:,.2f} (+%{customdata:.2f}%)<br>일시: %{x}<extra></extra>"
                         ))
 
-                    # 4. 손절 매도 타점 (파란색 ▼)
+                    # 손절 매도 타점 (▼)
                     loss_trades = [t for t in trade_log if t["pnl"] <= 0]
                     if loss_trades:
                         fig_long.add_trace(go.Scatter(
@@ -2047,16 +2029,17 @@ for tab, data in zip(tabs, display_targets):
                             customdata=[t["pnl"] * 100 for t in loss_trades],
                             hovertemplate="<b>[손절]</b> %{y:,.2f} (%{customdata:.2f}%)<br>일시: %{x}<extra></extra>"
                         ))
+
                 # 3. 5일 통계적 변동성 상/하한 밴드
                 fig_long.add_trace(go.Scatter(
-                    x=future_days, 
+                    x=future_labels_swing, 
                     y=future_lower_swing, 
                     mode="lines", 
                     name="5D 하한 지지선", 
                     line=dict(color="rgba(16,185,129,0.6)", width=1.5, dash="dot")
                 ))
                 fig_long.add_trace(go.Scatter(
-                    x=future_days, 
+                    x=future_labels_swing, 
                     y=future_upper_swing, 
                     mode="lines", 
                     name="5D 상한 저항선", 
@@ -2065,10 +2048,10 @@ for tab, data in zip(tabs, display_targets):
                     fillcolor="rgba(16,185,129,0.06)"
                 ))
 
-                # 4. 🔥 [실행 기준선] 1차 50% 분할 익절선 & 2차 눌림 매수선
+                # 4. 미래 실행 기준선 (1차 50% 분할 익절선 & 2차 눌림 매수선)
                 fig_long.add_trace(go.Scatter(
-                    x=future_days,
-                    y=[tp1_target] * len(future_days),
+                    x=future_labels_swing,
+                    y=[tp1_target] * len(future_labels_swing),
                     mode="lines",
                     name="1차 50% 분할 익절선",
                     line=dict(color="#dc2626", width=2.0, dash="dash"),
@@ -2076,15 +2059,14 @@ for tab, data in zip(tabs, display_targets):
                 ))
 
                 fig_long.add_trace(go.Scatter(
-                    x=future_days,
-                    y=[buy2_price] * len(future_days),
+                    x=future_labels_swing,
+                    y=[buy2_price] * len(future_labels_swing),
                     mode="lines",
                     name="2차 눌림 매수선 (-1%)",
                     line=dict(color="#047857", width=2.0, dash="dash"),
                     hovertemplate=f"<b>[2차 50% 분할 매수]</b> {fmt(buy2_price)}<extra></extra>"
                 ))
 
-                last_h_time = h_times[-1]
                 fig_long.add_shape(
                     type="line", 
                     x0=last_h_time, 
@@ -2097,7 +2079,7 @@ for tab, data in zip(tabs, display_targets):
 
                 stride_h = max(len(h_times) // 5, 1)
                 past_ticks_h = [h_times[i] for i in range(0, len(h_times) - 1, stride_h)]
-                custom_ticks_swing = past_ticks_h + ["D+5"]
+                custom_ticks_swing = past_ticks_h + [last_h_time, "D+2", "D+5"]
 
                 fig_long.update_layout(
                     title=dict(
