@@ -1027,6 +1027,8 @@ def process_single_asset(asset_name, target_info, cached_data=None):
         # 60일 1시간봉 기반 백테스팅 연산
         trade_returns = []
         time_over_count = 0
+        trade_log = []
+        
         try:
             h_data = fetch_recent_1h_candles(symbol)
             if h_data is not None and "close" in h_data and len(h_data["close"]) >= 45:
@@ -1067,6 +1069,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                         if is_calm and touched_lower and is_bullish_bounce and is_not_crashing:
                             position = "LONG"
                             entry_price = curr_p
+                            entry_time = h_data["times"][i]
                             holding_period = 0
 
                     elif position == "LONG":
@@ -1082,6 +1085,14 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                             if is_timeout:
                                 time_over_count += 1
                             trade_returns.append(float(current_pnl))
+
+                            trade_log.append({
+                                "entry_time": entry_time,
+                                "entry_price": entry_price,
+                                "exit_time": h_data["times"][i],
+                                "exit_price": curr_p,
+                                "pnl": float(current_pnl)
+                            })
                             position = None
 
                 if position == "LONG":
@@ -1090,6 +1101,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                     trade_returns.append(float(net_pnl))
         except Exception:
             trade_returns = []
+            trade_log = []
 
         result_dict = {
             "asset_name": asset_name,
@@ -1119,6 +1131,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
             "raw_pred_log_rv": raw_pred_log_rv,
             "fpc_scores": fpc_scores,
             "trade_returns": trade_returns,
+            "trade_log": trade_log,
             "time_over_count": time_over_count,
         }
 
@@ -1846,6 +1859,48 @@ for tab, data in zip(tabs, display_targets):
 
                 fig_long = go.Figure()
                 fig_long.add_trace(go.Scatter(x=h_times, y=h_closes, mode="lines", name="60일 종가", line=dict(color="#059669", width=1.8)))
+                # ------------------------------------------------------
+                # ▼ 매수 / 매도(수익/손실) 시점 마커 추가 구간
+                # ------------------------------------------------------
+                trade_log = data.get("trade_log", [])
+                if trade_log:
+                    # 1. 매수 타점 (초록색 위쪽 삼각형 ▲)
+                    buy_t = [t["entry_time"] for t in trade_log]
+                    buy_p = [t["entry_price"] for t in trade_log]
+                    fig_long.add_trace(go.Scatter(
+                        x=buy_t,
+                        y=buy_p,
+                        mode="markers",
+                        name="매수 진입",
+                        marker=dict(symbol="triangle-up", size=11, color="#10b981", line=dict(width=1, color="#ffffff")),
+                        hovertemplate="<b>[매수]</b> %{y:,.2f}<br>일시: %{x}<extra></extra>"
+                    ))
+
+                    # 2. 익절 매도 타점 (파란색 아래쪽 삼각형 ▼)
+                    win_trades = [t for t in trade_log if t["pnl"] > 0]
+                    if win_trades:
+                        fig_long.add_trace(go.Scatter(
+                            x=[t["exit_time"] for t in win_trades],
+                            y=[t["exit_price"] for t in win_trades],
+                            mode="markers",
+                            name="익절 매도 (+)",
+                            marker=dict(symbol="triangle-down", size=11, color="#3b82f6", line=dict(width=1, color="#ffffff")),
+                            customdata=[t["pnl"] * 100 for t in win_trades],
+                            hovertemplate="<b>[익절]</b> %{y:,.2f} (+%{customdata:.2f}%)<br>일시: %{x}<extra></extra>"
+                        ))
+
+                    # 3. 손절/손실 매도 타점 (빨간색 아래쪽 삼각형 ▼)
+                    loss_trades = [t for t in trade_log if t["pnl"] <= 0]
+                    if loss_trades:
+                        fig_long.add_trace(go.Scatter(
+                            x=[t["exit_time"] for t in loss_trades],
+                            y=[t["exit_price"] for t in loss_trades],
+                            mode="markers",
+                            name="손절 매도 (-)",
+                            marker=dict(symbol="triangle-down", size=11, color="#ef4444", line=dict(width=1, color="#ffffff")),
+                            customdata=[t["pnl"] * 100 for t in loss_trades],
+                            hovertemplate="<b>[손절]</b> %{y:,.2f} (%{customdata:.2f}%)<br>일시: %{x}<extra></extra>"
+                        ))
                 fig_long.add_trace(go.Scatter(x=future_days, y=future_lower_swing, mode="lines", name="5D 하한 (-1σ)", line=dict(color="rgba(16,185,129,0.85)", width=1.5, dash="dot")))
                 fig_long.add_trace(go.Scatter(x=future_days, y=future_upper_swing, mode="lines", name="5D 상한 (+1σ)", line=dict(color="rgba(239,68,68,0.85)", width=1.5, dash="dot"), fill="tonexty", fillcolor="rgba(16,185,129,0.1)"))
 
