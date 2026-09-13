@@ -1070,30 +1070,31 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                     # 60일 거시 레짐 산출
                     c_ma20 = ma20_series[i]
                     c_ma60 = ma60_series[i]
+                    # 직전 5봉 전 60선 대비 현재 60선의 기울기(추세 강도)
+                    ma60_prev5 = ma60_series[i - 5] if i >= 5 else c_ma60
+                    is_ma60_falling = c_ma60 < ma60_prev5 * 0.998  # 60선이 확실히 우하향 중일 때만 진짜 하락장
+
                     c_high = rolling_high[i]
                     c_low = rolling_low[i]
                     c_spread = max(c_high - c_low, 1e-5)
                     macro_pos = np.clip(((curr_p - c_low) / c_spread) * 100.0, 0.0, 100.0)
 
-                    is_bull = curr_p > c_ma20 > c_ma60
-                    is_bear = curr_p < c_ma20 < c_ma60
+                    is_bull = curr_p > c_ma20
+                    # 진짜 위험한 하락장: 60선 아래이면서 60선 자체가 가파르게 꺾여 내려갈 때
+                    is_real_bear = (curr_p < c_ma60) and is_ma60_falling
 
                     if position is None:
                         is_calm = curr_sigma < rv_threshold
                         touched_lower = prev_p <= dyn_lower[i - 1]
                         is_bullish_bounce = (curr_p >= prev_p * 1.001) and (curr_p > dyn_lower[i])
 
-                        # 🎯 장기 가이드 필터 적용:
-                        # - 상승 추세(정배열): 눌림목 및 저점권(macro_pos <= 60) 매수 허용
-                        # - 횡보장: 박스권 하단 지지(macro_pos <= 35) 매수 허용
-                        # - 하락 추세(역배열): 칼날 잡기 금지 (macro_pos < 10 극단 패닉셀 바닥에서만 허용)
-                        if is_bull:
-                            macro_allow = macro_pos <= 70.0
-                        elif is_bear:
-                            macro_allow = False
+                        # 🎯 스마트 레짐 필터
+                        if is_real_bear:
+                            macro_allow = False              # 급락 우하향 추세만 완전 차단
+                        elif is_bull:
+                            macro_allow = macro_pos <= 75.0  # 상승 추세: 상단 75%까지 눌림 매수 허용
                         else:
-                            macro_allow = macro_pos <= 50.0
-
+                            macro_allow = macro_pos <= 60.0  # 횡보/완만 조정: 60% 이하 저점권 매수 허용
                         if is_calm and touched_lower and is_bullish_bounce and macro_allow:
                             position = "LONG"
                             entry_price = curr_p
