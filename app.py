@@ -1739,6 +1739,7 @@ for tab, data in zip(tabs, display_targets):
                     tickmode="array",
                     tickvals=custom_ticks,
                     gridcolor="#f1f5f9",
+                    tickangle=-30, # 라벨 겹침 방지 각도 조정
                 ),
                 yaxis=dict(title=f"가격 ({CURRENCY})", gridcolor="#f1f5f9"),
                 plot_bgcolor="#ffffff",
@@ -1748,7 +1749,12 @@ for tab, data in zip(tabs, display_targets):
                 margin=dict(l=10, r=10, t=40, b=10),
                 hovermode="x unified",
                 legend=dict(
-                    orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1,
+                    font=dict(size=11),
                 ),
             )
             st.plotly_chart(fig_short, use_container_width=True)
@@ -1911,7 +1917,7 @@ for tab, data in zip(tabs, display_targets):
                 past_ticks_h = [h_times[i] for i in range(0, len(h_times), stride_h)]
                 if last_h_time not in past_ticks_h:
                     past_ticks_h.append(last_h_time)
-                custom_ticks_swing = past_ticks_h + ["D+2", "D+5"]
+                custom_ticks_swing = past_ticks_h + ["D+5"]
 
                 fig_long.update_layout(
                     title=dict(text="60일 궤적 & 5일 선행 예측 밴드", font=dict(size=14, color="#1e293b")),
