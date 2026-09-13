@@ -1121,9 +1121,8 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                         # 2) 청산 조건
                         # - 정상 추세 종료: 1차 익절 후 20선 이탈
                         is_trend_exit = has_taken_tp1 and (holding_period > tp1_bar + 3) and (curr_p < c_ma20)
-                        
-                        # 🚨 비상 안전벨트: 1차 익절도 못 하고 -3.5% 이상 밀리거나, 하단 밴드를 심하게 이탈할 때 칼손절
-                        is_hard_sl = (current_pnl <= -0.035) or (curr_p < dyn_lower[i] * 0.98)
+                        # 🚨 재앙 방지용 안전벨트: 정상 숨고르기(-2~3%)는 살려두고, -5.0% 초과 폭락만 캡핑
+                        is_hard_sl = current_pnl <= -0.05
                         
                         # 손실 중 변동성 폭발 대피
                         is_spike = (curr_sigma >= rv_threshold) and (current_pnl < 0)
