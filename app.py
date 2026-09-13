@@ -1130,22 +1130,27 @@ def process_single_asset(asset_name, target_info, cached_data=None):
 
                             # 1차 익절을 했으면 (1차 수익 50% + 최종 청산 수익 50%) 합산
                             if has_taken_tp1:
-                                final_pnl = (tp1_pnl * 0.5) + (float(current_pnl) * 0.5)
+                                gross_pnl = (tp1_pnl * 0.5) + (float(current_pnl) * 0.5)
                             else:
-                                final_pnl = float(current_pnl)
+                                gross_pnl = float(current_pnl)
 
-                            trade_returns.append(final_pnl)
+                            # 🎯 실전 거래 비용 반영: 왕복 수수료 및 슬리피지 (-0.20%) 일괄 차감
+                            fee_rate = 0.0020
+                            net_final_pnl = gross_pnl - fee_rate
+
+                            trade_returns.append(net_final_pnl)
                             trade_log.append({
                                 "entry_time": entry_time,
                                 "entry_price": entry_price,
                                 "exit_time": h_data["times"][i],
                                 "exit_price": curr_p,
-                                "pnl": final_pnl,
+                                "pnl": net_final_pnl,
                             })
                             position = None
                 if position == "LONG":
                     final_gross_pnl = (h_prices[-1] - entry_price) / entry_price
-                    net_pnl = final_gross_pnl - 0.0025
+                    fee_rate = 0.0020
+                    net_pnl = final_gross_pnl - fee_rate
                     trade_returns.append(float(net_pnl))
         except Exception:
             trade_returns = []
