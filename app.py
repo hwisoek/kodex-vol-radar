@@ -1054,7 +1054,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                 rolling_high = s_prices.rolling(60).max().values
                 rolling_low = s_prices.rolling(60).min().values
 
-                max_holding_bars = 20
+                max_holding_bars = 60
                 fee_rate = 0.0020  # 실전 왕복 수수료 및 슬리피지 0.20% 차감
 
                 position = None
