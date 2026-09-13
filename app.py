@@ -1092,12 +1092,13 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                         has_enough_spread = band_spread >= 0.015
 
                         # 🎯 60선 역배열 배제 필터
-                        if curr_p < c_ma60:
+                        ma60_falling = c_ma60 < ma60_series[i - 5] * 0.995 if i >= 5 else False
+                        if is_real_bear or ma60_falling::
                             macro_allow = False
                         elif is_bull:
-                            macro_allow = macro_pos <= 75.0
+                            macro_allow = macro_pos <= 80.0
                         else:
-                            macro_allow = macro_pos <= 60.0
+                            macro_allow = macro_pos <= 65.0
 
                         if is_calm and touched_lower and is_bullish_bounce and macro_allow and has_enough_spread:
                             position = "LONG"
