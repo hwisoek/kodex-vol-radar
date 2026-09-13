@@ -1431,7 +1431,7 @@ with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 &
 
         if N_total >= 30:
             rf_per_trade = (0.035 / 252.0) * (4.0 / 6.5)
-            pooled_excess = all_trades - rf_per_trade
+            pooled_excess = all_trades
 
             B = 10000
             actual_mean_total = float(np.mean(pooled_excess))
