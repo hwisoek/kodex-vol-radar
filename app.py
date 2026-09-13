@@ -1086,12 +1086,16 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                     is_bull = curr_p > c_ma20
                     is_real_bear = (curr_p < c_ma60) and is_ma60_falling
 
+                    # 🎯 20일 이평선 우상향/플랫 판별 (3봉 전 대비 상승 또는 수평)
+                    ma20_prev3 = ma20_series[i - 3] if i >= 3 else c_ma20
+                    is_ma20_up = c_ma20 >= ma20_prev3 * 0.999
+
                     if position is None:
                         is_calm = curr_sigma < rv_threshold
                         touched_lower = prev_p <= dyn_lower[i - 1]
                         is_bullish_bounce = (curr_p >= prev_p * 1.002) and (curr_p > dyn_lower[i])
 
-                        # 🎯 최소 밴드 폭 필터: 
+                        # 🎯 최소 밴드 폭 필터
                         band_spread = (dyn_upper[i] - dyn_lower[i]) / curr_p
                         has_enough_spread = band_spread >= 0.015
 
@@ -1103,7 +1107,8 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                         else:
                             macro_allow = macro_pos <= 60.0
 
-                        if is_calm and touched_lower and is_bullish_bounce and macro_allow and has_enough_spread:
+                        # 🎯 is_ma20_up 추가: 20선이 버텨주는 우상향/플랫 눌림목만 진입
+                        if is_calm and touched_lower and is_bullish_bounce and macro_allow and has_enough_spread and is_ma20_up:
                             position = "LONG"
                             entry_price = curr_p
                             entry_time = h_data["times"][i]
@@ -1119,6 +1124,41 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                         if not has_taken_tp1 and (curr_p >= dyn_upper[i]):
                             has_taken_tp1 = True
                             tp1_pnl = float(current_pnl)
+
+                        # 2) 전량 청산 조건
+                        is_trend_exit = has_taken_tp1 and (curr_p < mid_line[i])
+                        is_spike = curr_sigma >= rv_threshold
+                        is_timeout = holding_period >= max_holding_bars
+
+                        if is_trend_exit or is_spike or is_timeout:
+                            if is_timeout:
+                                time_over_count += 1
+
+                            if has_taken_tp1:
+                                gross_pnl = (tp1_pnl * 0.5) + (float(current_pnl) * 0.5)
+                            else:
+                                gross_pnl = float(current_pnl)
+
+                            # 🎯 실전 거래 비용 반영: 왕복 수수료 및 슬리피지 (-0.20%) 차감
+                            fee_rate = 0.0020
+                            net_final_pnl = gross_pnl - fee_rate
+
+                            trade_returns.append(net_final_pnl)
+                            trade_log.append({
+                                "entry_time": entry_time,
+                                "entry_price": entry_price,
+                                "exit_time": h_data["times"][i],
+                                "exit_price": curr_p,
+                                "pnl": net_final_pnl,
+                            })
+                            position = None
+
+                # 시뮬레이션 종료 시점에 아직 보유 중인 미청산 포지션 수수료 반영
+                if position == "LONG":
+                    final_gross_pnl = (h_prices[-1] - entry_price) / entry_price
+                    fee_rate = 0.0020
+                    net_pnl = final_gross_pnl - fee_rate
+                    trade_returns.append(float(net_pnl))
 
                         # 2) 전량 청산 조건
                         is_trend_exit = has_taken_tp1 and (curr_p < mid_line[i])
