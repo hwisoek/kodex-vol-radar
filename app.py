@@ -1948,7 +1948,7 @@ for tab, data in zip(tabs, display_targets):
                 # 2. 백테스트 체결 마커 및 음영
                 trade_log = data.get("trade_log", [])
                 if trade_log:
-                    # 0. 매수~매도 보유 구간 음영 표시
+                    # 0. 매수~매도 보유 구간 음영 표시 (1차 기본 음영 + 2차 매수 주황색 하이라이트)
                     for idx, trade in enumerate(trade_log):
                         is_profit = trade["pnl"] > 0
                         fill_col = "rgba(239, 68, 68, 0.15)" if is_profit else "rgba(59, 130, 246, 0.15)"
@@ -1957,6 +1957,7 @@ for tab, data in zip(tabs, display_targets):
 
                         scale_text = " (2차완료)" if trade.get("scale_in", False) else ""
 
+                        # 1) 기본 보유 구간 전체 음영 (1차 진입 ~ 청산)
                         fig_long.add_vrect(
                             x0=trade["entry_time"],
                             x1=trade["exit_time"],
@@ -1972,6 +1973,25 @@ for tab, data in zip(tabs, display_targets):
                                 yshift=10 if idx % 2 == 0 else -5,
                             ),
                         )
+
+                        # 2) 🔥 [핵심 추가] 2차 매수 체결 구간 주황색 하이라이트 음영 (2차 진입 ~ 청산)
+                        if trade.get("scale_in", False) and trade.get("scale_in_time"):
+                            fig_long.add_vrect(
+                                x0=trade["scale_in_time"],
+                                x1=trade["exit_time"],
+                                fillcolor="rgba(245, 158, 11, 0.28)",  # 선명한 주황색 띠
+                                opacity=1.0,
+                                layer="below",
+                                line_width=1.5,
+                                line_dash="dot",
+                                line_color="rgba(217, 119, 6, 0.7)",
+                                annotation_text="2차 비중 100%",
+                                annotation_position="bottom left",
+                                annotation=dict(
+                                    font=dict(size=8, color="#b45309", family="Arial"),
+                                    yshift=5,
+                                ),
+                            )
 
                     # 1. 1차 매수 진입 타점 (초록색 ▲)
                     buy_t = [t["entry_time"] for t in trade_log]
@@ -2022,7 +2042,6 @@ for tab, data in zip(tabs, display_targets):
                             customdata=[t["pnl"] * 100 for t in loss_trades],
                             hovertemplate="<b>[손절]</b> %{y:,.2f} (%{customdata:.2f}%)<br>일시: %{x}<extra></extra>"
                         ))
-
                 # 3. 5일 통계적 변동성 상/하한 밴드
                 fig_long.add_trace(go.Scatter(
                     x=future_days, 
