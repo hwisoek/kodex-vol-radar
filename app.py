@@ -1131,13 +1131,14 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                         if not has_taken_tp1 and (curr_p >= dyn_upper[i]):
                             has_taken_tp1 = True
                             tp1_pnl = float(current_pnl)
-                            tp1_bar = holding_period  # 익절 시점 기록
+                            tp1_bar = holding_period
 
-                        # 2) 전량 청산 조건 개선:
-                        # - 1차 익절 후: 10선이 아니라 완만한 20선(c_ma20)을 종가로 깰 때 진짜 추세 꺾임으로 판정
-                        # - 단, 1차 익절 직후 잔파동 털림 방지를 위해 최소 3봉 이후부터 추세 이탈 체크
+                        # 2) 전량 청산 조건
+                        # - 1차 익절 후: 20선(c_ma20)을 종가로 깰 때 진짜 추세 이탈
                         is_trend_exit = has_taken_tp1 and (holding_period > tp1_bar + 3) and (curr_p < c_ma20)
-                        is_spike = curr_sigma >= rv_threshold
+                        
+                        # 🎯 변동성 폭발: '마이너스 손실 중'에 터지는 악재/급락일 때만 대피! (상승 랠리 불꽃놀이는 홀딩)
+                        is_spike = (curr_sigma >= rv_threshold) and (current_pnl < 0)
                         is_timeout = holding_period >= max_holding_bars
 
                         if is_trend_exit or is_spike or is_timeout:
