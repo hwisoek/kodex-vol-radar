@@ -1116,19 +1116,24 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                         if not has_taken_tp1 and (curr_p >= dyn_upper[i]):
                             has_taken_tp1 = True
                             tp1_pnl = float(current_pnl)
+                            tp1_bar = holding_period
 
-                        # 2) 전량 청산 조건
-                        # - 1차 익절 후: 주가가 10선 중심선(mid_line) 아래로 밀려 추세가 꺾일 때
-                        # - 익절 전: 변동성 폭발(is_spike) 또는 최대 보유기간 초과(is_timeout)
-                        is_trend_exit = has_taken_tp1 and (curr_p < mid_line[i])
-                        is_spike = curr_sigma >= rv_threshold
+                        # 2) 청산 조건
+                        # - 정상 추세 종료: 1차 익절 후 20선 이탈
+                        is_trend_exit = has_taken_tp1 and (holding_period > tp1_bar + 3) and (curr_p < c_ma20)
+                        
+                        # 🚨 비상 안전벨트: 1차 익절도 못 하고 -3.5% 이상 밀리거나, 하단 밴드를 심하게 이탈할 때 칼손절
+                        is_hard_sl = (current_pnl <= -0.035) or (curr_p < dyn_lower[i] * 0.98)
+                        
+                        # 손실 중 변동성 폭발 대피
+                        is_spike = (curr_sigma >= rv_threshold) and (current_pnl < 0)
                         is_timeout = holding_period >= max_holding_bars
 
-                        if is_trend_exit or is_spike or is_timeout:
+                        # 비상 손절(is_hard_sl) 추가
+                        if is_trend_exit or is_hard_sl or is_spike or is_timeout:
                             if is_timeout:
                                 time_over_count += 1
 
-                            # 1차 익절을 했으면 (1차 수익 50% + 최종 청산 수익 50%) 합산
                             if has_taken_tp1:
                                 final_pnl = (tp1_pnl * 0.5) + (float(current_pnl) * 0.5)
                             else:
