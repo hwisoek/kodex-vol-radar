@@ -1939,19 +1939,47 @@ for tab, data in zip(tabs, display_targets):
                 last_h_time = h_times[-1]
                 fig_long.add_shape(type="line", x0=last_h_time, x1=last_h_time, y0=0, y1=1, yref="paper", line=dict(color="#64748b", width=1.5, dash="dash"))
 
+                # ------------------------------------------------------
+                # 1. X축 눈금 정리: 마지막 시간(last_h_time)을 빼서 D+5와 겹침 완전 방지
+                # ------------------------------------------------------
                 stride_h = max(len(h_times) // 5, 1)
-                past_ticks_h = [h_times[i] for i in range(0, len(h_times), stride_h)]
-                if last_h_time not in past_ticks_h:
-                    past_ticks_h.append(last_h_time)
+                # 마지막 인덱스 바로 전까지만 눈금으로 잡아줘
+                past_ticks_h = [h_times[i] for i in range(0, len(h_times) - 1, stride_h)]
                 custom_ticks_swing = past_ticks_h + ["D+5"]
 
+                # ------------------------------------------------------
+                # 2. 레이아웃 정리: 상단 여백(t=75) 확보 및 범례 위치 최적화
+                # ------------------------------------------------------
                 fig_long.update_layout(
-                    title=dict(text="60일 궤적 & 5일 선행 예측 밴드", font=dict(size=14, color="#1e293b")),
-                    xaxis=dict(title="타임라인 (1H / D+일자)", type="category", tickmode="array", tickvals=custom_ticks_swing, gridcolor="#f1f5f9"),
+                    title=dict(
+                        text="<b>60일 궤적 & 5일 선행 예측 밴드 (가이드 타점)</b>",
+                        font=dict(size=14, color="#1e293b"),
+                        x=0.0,
+                        y=0.98,
+                    ),
+                    xaxis=dict(
+                        title="타임라인 (1H / D+일자)",
+                        type="category",
+                        tickmode="array",
+                        tickvals=custom_ticks_swing,
+                        gridcolor="#f1f5f9",
+                        tickangle=-25,  # 글자 겹침 방지 기울기
+                    ),
                     yaxis=dict(title=f"가격 ({CURRENCY})", gridcolor="#f1f5f9"),
-                    plot_bgcolor="#ffffff", paper_bgcolor="rgba(0,0,0,0)", template="plotly_white",
-                    height=380, margin=dict(l=10, r=10, t=40, b=10), hovermode="x unified",
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    plot_bgcolor="#ffffff",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    template="plotly_white",
+                    height=420,  # 상단 여백을 위해 높이 380 -> 420 확장
+                    margin=dict(l=10, r=10, t=75, b=25),  # t(상단 여백)를 40 -> 75로 늘림
+                    hovermode="x unified",
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.03,  # 제목 상단/우측으로 안전하게 띄움
+                        xanchor="right",
+                        x=1.0,
+                        font=dict(size=11),
+                    ),
                 )
                 st.plotly_chart(fig_long, use_container_width=True)
             else:
