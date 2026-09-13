@@ -1031,7 +1031,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
         
         try:
             h_data = fetch_recent_1h_candles(symbol)
-            if h_data is not None and "close" in h_data and len(h_data["close"]) >= 45:
+            if h_data is not None and "close" in h_data and len(h_data["close"]) >= 60:
                 h_prices = np.array(h_data["close"], dtype=float)
                 s_prices = pd.Series(h_prices)
 
@@ -1046,7 +1046,13 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                 dyn_lower = mid_line * (1.0 - pred_sigmas)
                 dyn_upper = mid_line * (1.0 + pred_sigmas)
 
-                ema_macro = s_prices.ewm(span=40).mean().values
+                # ------------------------------------------------------
+                # 장기 가이드 롤링 지표 계산 (20선, 60선, 60일 고저 채널)
+                # ------------------------------------------------------
+                ma20_series = s_prices.rolling(20).mean().values
+                ma60_series = s_prices.rolling(60).mean().values
+                rolling_high = s_prices.rolling(60).max().values
+                rolling_low = s_prices.rolling(60).min().values
 
                 stop_loss_limit = -0.015
                 max_holding_bars = 40
@@ -1055,18 +1061,40 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                 entry_price = 0.0
                 holding_period = 0
 
-                for i in range(40, len(h_prices)):
+                # 60일 장기 지표 계산을 위해 시작 인덱스를 60으로 설정
+                for i in range(60, len(h_prices)):
                     curr_p = h_prices[i]
                     prev_p = h_prices[i - 1]
                     curr_sigma = pred_sigmas[i]
+
+                    # 60일 거시 레짐 산출
+                    c_ma20 = ma20_series[i]
+                    c_ma60 = ma60_series[i]
+                    c_high = rolling_high[i]
+                    c_low = rolling_low[i]
+                    c_spread = max(c_high - c_low, 1e-5)
+                    macro_pos = np.clip(((curr_p - c_low) / c_spread) * 100.0, 0.0, 100.0)
+
+                    is_bull = curr_p > c_ma20 > c_ma60
+                    is_bear = curr_p < c_ma20 < c_ma60
 
                     if position is None:
                         is_calm = curr_sigma < rv_threshold
                         touched_lower = prev_p <= dyn_lower[i - 1]
                         is_bullish_bounce = (curr_p >= prev_p * 1.001) and (curr_p > dyn_lower[i])
-                        is_not_crashing = curr_p >= (ema_macro[i] * 0.97)
 
-                        if is_calm and touched_lower and is_bullish_bounce and is_not_crashing:
+                        # 🎯 장기 가이드 필터 적용:
+                        # - 상승 추세(정배열): 눌림목 및 저점권(macro_pos <= 60) 매수 허용
+                        # - 횡보장: 박스권 하단 지지(macro_pos <= 35) 매수 허용
+                        # - 하락 추세(역배열): 칼날 잡기 금지 (macro_pos < 10 극단 패닉셀 바닥에서만 허용)
+                        if is_bull:
+                            macro_allow = macro_pos <= 60.0
+                        elif is_bear:
+                            macro_allow = macro_pos < 10.0
+                        else:
+                            macro_allow = macro_pos <= 35.0
+
+                        if is_calm and touched_lower and is_bullish_bounce and macro_allow:
                             position = "LONG"
                             entry_price = curr_p
                             entry_time = h_data["times"][i]
@@ -1102,7 +1130,6 @@ def process_single_asset(asset_name, target_info, cached_data=None):
         except Exception:
             trade_returns = []
             trade_log = []
-
         result_dict = {
             "asset_name": asset_name,
             "target_info": target_info,
