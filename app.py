@@ -1092,7 +1092,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
 
                         # 🎯 최소 밴드 폭 필터: 
                         band_spread = (dyn_upper[i] - dyn_lower[i]) / curr_p
-                        has_enough_spread = band_spread >= 0.017
+                        has_enough_spread = band_spread >= 0.015
 
                         # 스마트 레짐 필터
                         if is_real_bear:
