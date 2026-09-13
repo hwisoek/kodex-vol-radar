@@ -1870,11 +1870,12 @@ for tab, data in zip(tabs, display_targets):
                 # ------------------------------------------------------
                 trade_log = data.get("trade_log", [])
                 if trade_log:
-                    # 0. 매수~매도 보유 구간 음영 표시 (수익: 연한 파랑 / 손실: 연한 빨강)
+                    # 0. 매수~매도 보유 구간 음영 표시 (한국 기준: 수익=빨강, 손실=파랑)
                     for trade in trade_log:
                         is_profit = trade["pnl"] > 0
-                        fill_col = "rgba(59, 130, 246, 0.15)" if is_profit else "rgba(239, 68, 68, 0.15)"
-                        line_col = "rgba(59, 130, 246, 0.3)" if is_profit else "rgba(239, 68, 68, 0.3)"
+                        # 수익: 연한 빨강 / 손실: 연한 파랑
+                        fill_col = "rgba(239, 68, 68, 0.15)" if is_profit else "rgba(59, 130, 246, 0.15)"
+                        line_col = "rgba(239, 68, 68, 0.3)" if is_profit else "rgba(59, 130, 246, 0.3)"
 
                         fig_long.add_vrect(
                             x0=trade["entry_time"],
@@ -1889,12 +1890,13 @@ for tab, data in zip(tabs, display_targets):
                             annotation=dict(
                                 font=dict(
                                     size=10,
-                                    color="#1d4ed8" if is_profit else "#b91c1c",
+                                    color="#b91c1c" if is_profit else "#1d4ed8",
                                     family="Arial"
                                 )
                             )
                         )
-                    # 1. 매수 타점 (초록색 위쪽 삼각형 ▲)
+
+                    # 1. 매수 타점 (노란색/주황색 계열이나 초록색 유지)
                     buy_t = [t["entry_time"] for t in trade_log]
                     buy_p = [t["entry_price"] for t in trade_log]
                     fig_long.add_trace(go.Scatter(
@@ -1906,7 +1908,7 @@ for tab, data in zip(tabs, display_targets):
                         hovertemplate="<b>[매수]</b> %{y:,.2f}<br>일시: %{x}<extra></extra>"
                     ))
 
-                    # 2. 익절 매도 타점 (파란색 아래쪽 삼각형 ▼)
+                    # 2. 익절 매도 타점 (한국 기준: 빨간색 ▼)
                     win_trades = [t for t in trade_log if t["pnl"] > 0]
                     if win_trades:
                         fig_long.add_trace(go.Scatter(
@@ -1914,12 +1916,12 @@ for tab, data in zip(tabs, display_targets):
                             y=[t["exit_price"] for t in win_trades],
                             mode="markers",
                             name="익절 매도 (+)",
-                            marker=dict(symbol="triangle-down", size=11, color="#3b82f6", line=dict(width=1, color="#ffffff")),
+                            marker=dict(symbol="triangle-down", size=11, color="#ef4444", line=dict(width=1, color="#ffffff")),
                             customdata=[t["pnl"] * 100 for t in win_trades],
                             hovertemplate="<b>[익절]</b> %{y:,.2f} (+%{customdata:.2f}%)<br>일시: %{x}<extra></extra>"
                         ))
 
-                    # 3. 손절/손실 매도 타점 (빨간색 아래쪽 삼각형 ▼)
+                    # 3. 손절/손실 매도 타점 (한국 기준: 파란색 ▼)
                     loss_trades = [t for t in trade_log if t["pnl"] <= 0]
                     if loss_trades:
                         fig_long.add_trace(go.Scatter(
@@ -1927,7 +1929,7 @@ for tab, data in zip(tabs, display_targets):
                             y=[t["exit_price"] for t in loss_trades],
                             mode="markers",
                             name="손절 매도 (-)",
-                            marker=dict(symbol="triangle-down", size=11, color="#ef4444", line=dict(width=1, color="#ffffff")),
+                            marker=dict(symbol="triangle-down", size=11, color="#3b82f6", line=dict(width=1, color="#ffffff")),
                             customdata=[t["pnl"] * 100 for t in loss_trades],
                             hovertemplate="<b>[손절]</b> %{y:,.2f} (%{customdata:.2f}%)<br>일시: %{x}<extra></extra>"
                         ))
