@@ -260,7 +260,8 @@ def fetch_recent_1h_candles(symbol: str):
         session = requests.Session()
         session.headers.update({"User-Agent": "Mozilla/5.0"})
         ticker = yf.Ticker(symbol, session=session)
-        df_1h = ticker.history(period="60d", interval="1h")
+        # 🎯 60d -> 120d로 2배 확장 (1시간봉은 yfinance에서 최대 730일까지 지원)
+        df_1h = ticker.history(period="120d", interval="1h")
         if df_1h is not None and not df_1h.empty and "Close" in df_1h.columns:
             df_clean = df_1h.dropna(subset=["Close", "High", "Low"])
             if len(df_clean) >= 60:
