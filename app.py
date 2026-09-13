@@ -1028,7 +1028,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
         trade_returns = []
         time_over_count = 0
         trade_log = []
-        
+
         try:
             h_data = fetch_recent_1h_candles(symbol)
             if h_data is not None and "close" in h_data and len(h_data["close"]) >= 60:
@@ -1074,9 +1074,8 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                     # 60일 거시 레짐 산출
                     c_ma20 = ma20_series[i]
                     c_ma60 = ma60_series[i]
-                    # 직전 5봉 전 60선 대비 현재 60선의 기울기(추세 강도)
                     ma60_prev5 = ma60_series[i - 5] if i >= 5 else c_ma60
-                    is_ma60_falling = c_ma60 < ma60_prev5 * 0.998  # 60선이 확실히 우하향 중일 때만 진짜 하락장
+                    is_ma60_falling = c_ma60 < ma60_prev5 * 0.998  # 60선 우하향 판별
 
                     c_high = rolling_high[i]
                     c_low = rolling_low[i]
@@ -1084,7 +1083,6 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                     macro_pos = np.clip(((curr_p - c_low) / c_spread) * 100.0, 0.0, 100.0)
 
                     is_bull = curr_p > c_ma20
-                    # 진짜 위험한 하락장: 60선 아래이면서 60선 자체가 가파르게 꺾여 내려갈 때
                     is_real_bear = (curr_p < c_ma60) and is_ma60_falling
 
                     if position is None:
@@ -1092,17 +1090,17 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                         touched_lower = prev_p <= dyn_lower[i - 1]
                         is_bullish_bounce = (curr_p >= prev_p * 1.002) and (curr_p > dyn_lower[i])
 
-                        # 🎯 최소 밴드 폭 필터: 밴드 상·하단 간격이 최소 1.5% 이상 확보된 자리만 진입
+                        # 🎯 최소 밴드 폭 필터: 상·하단 마진 공간이 최소 1.5% 이상 확보되었을 때만 진입
                         band_spread = (dyn_upper[i] - dyn_lower[i]) / curr_p
                         has_enough_spread = band_spread >= 0.015
 
-                        # 🎯 스마트 레짐 필터
+                        # 스마트 레짐 필터
                         if is_real_bear:
-                            macro_allow = False              # 급락 우하향 추세만 완전 차단
+                            macro_allow = False
                         elif is_bull:
-                            macro_allow = macro_pos <= 75.0  # 상승 추세: 상단 75%까지 눌림 매수 허용
+                            macro_allow = macro_pos <= 75.0
                         else:
-                            macro_allow = macro_pos <= 60.0  # 횡보/완만 조정: 60% 이하 저점권 매수 허용
+                            macro_allow = macro_pos <= 60.0
 
                         if is_calm and touched_lower and is_bullish_bounce and macro_allow and has_enough_spread:
                             position = "LONG"
@@ -1122,8 +1120,6 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                             tp1_pnl = float(current_pnl)
 
                         # 2) 전량 청산 조건
-                        # - 1차 익절 후: 주가가 10선 중심선(mid_line) 아래로 밀려 추세가 꺾일 때
-                        # - 익절 전: 변동성 폭발(is_spike) 또는 최대 보유기간 초과(is_timeout)
                         is_trend_exit = has_taken_tp1 and (curr_p < mid_line[i])
                         is_spike = curr_sigma >= rv_threshold
                         is_timeout = holding_period >= max_holding_bars
@@ -1132,7 +1128,6 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                             if is_timeout:
                                 time_over_count += 1
 
-                            # 1차 익절을 했으면 (1차 수익 50% + 최종 청산 수익 50%) 합산
                             if has_taken_tp1:
                                 gross_pnl = (tp1_pnl * 0.5) + (float(current_pnl) * 0.5)
                             else:
@@ -1152,29 +1147,17 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                             })
                             position = None
 
+                # 시뮬레이션 종료 시점에 아직 보유 중인 미청산 포지션 수수료 반영
                 if position == "LONG":
                     final_gross_pnl = (h_prices[-1] - entry_price) / entry_price
                     fee_rate = 0.0020
                     net_pnl = final_gross_pnl - fee_rate
                     trade_returns.append(float(net_pnl))
 
-                            trade_returns.append(final_pnl)
-                            trade_log.append({
-                                "entry_time": entry_time,
-                                "entry_price": entry_price,
-                                "exit_time": h_data["times"][i],
-                                "exit_price": curr_p,
-                                "pnl": final_pnl,
-                            })
-                            position = None
-                if position == "LONG":
-                    final_gross_pnl = (h_prices[-1] - entry_price) / entry_price
-                    fee_rate = 0.0020
-                    net_pnl = final_gross_pnl - fee_rate
-                    trade_returns.append(float(net_pnl))
         except Exception:
             trade_returns = []
             trade_log = []
+
         result_dict = {
             "asset_name": asset_name,
             "target_info": target_info,
@@ -1213,7 +1196,6 @@ def process_single_asset(asset_name, target_info, cached_data=None):
         if cached_data is not None:
             return cached_data
         return None
-
 # ==============================================================================
 # 8. 메인 렌더링 & 병렬 계산 (국장/미장 전체 장 상태 기반 최적화)
 # ==============================================================================
