@@ -1056,11 +1056,14 @@ def process_single_asset(asset_name, target_info, cached_data=None):
 
                 stop_loss_limit = -0.015
                 take_profit_target = 0.008
-                max_holding_bars = 40
+                max_holding_bars = 60  # 추세 유지를 위해 보유 한도를 60봉(약 1~2주)으로 확장
 
                 position = None
                 entry_price = 0.0
+                entry_time = ""
                 holding_period = 0
+                has_taken_tp1 = False  # 1차 분할 익절 체크용
+                tp1_pnl = 0.0          # 1차 익절 시점 수익률
 
                 # 60일 장기 지표 계산을 위해 시작 인덱스를 60으로 설정
                 for i in range(60, len(h_prices)):
@@ -1096,35 +1099,50 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                             macro_allow = macro_pos <= 75.0  # 상승 추세: 상단 75%까지 눌림 매수 허용
                         else:
                             macro_allow = macro_pos <= 60.0  # 횡보/완만 조정: 60% 이하 저점권 매수 허용
+
                         if is_calm and touched_lower and is_bullish_bounce and macro_allow:
                             position = "LONG"
                             entry_price = curr_p
                             entry_time = h_data["times"][i]
                             holding_period = 0
+                            has_taken_tp1 = False
+                            tp1_pnl = 0.0
 
                     elif position == "LONG":
                         holding_period += 1
                         current_pnl = (curr_p - entry_price) / entry_price
 
-                        is_tp = (curr_p >= dyn_upper[i]) or (current_pnl >= take_profit_target)
-                        is_sl = current_pnl <= stop_loss_limit
+                        # 1) 상단 밴드 터치 시 50% 분할 익절 확보
+                        if not has_taken_tp1 and (curr_p >= dyn_upper[i]):
+                            has_taken_tp1 = True
+                            tp1_pnl = float(current_pnl)
+
+                        # 2) 전량 청산 조건
+                        # - 1차 익절 후: 주가가 10선 중심선(mid_line) 아래로 밀려 추세가 꺾일 때
+                        # - 익절 전: 변동성 폭발(is_spike) 또는 최대 보유기간 초과(is_timeout)
+                        is_trend_exit = has_taken_tp1 and (curr_p < mid_line[i])
                         is_spike = curr_sigma >= rv_threshold
                         is_timeout = holding_period >= max_holding_bars
 
-                        if is_tp or is_sl or is_spike or is_timeout:
+                        if is_trend_exit or is_spike or is_timeout:
                             if is_timeout:
                                 time_over_count += 1
-                            trade_returns.append(float(current_pnl))
 
+                            # 1차 익절을 했으면 (1차 수익 50% + 최종 청산 수익 50%) 합산
+                            if has_taken_tp1:
+                                final_pnl = (tp1_pnl * 0.5) + (float(current_pnl) * 0.5)
+                            else:
+                                final_pnl = float(current_pnl)
+
+                            trade_returns.append(final_pnl)
                             trade_log.append({
                                 "entry_time": entry_time,
                                 "entry_price": entry_price,
                                 "exit_time": h_data["times"][i],
                                 "exit_price": curr_p,
-                                "pnl": float(current_pnl)
+                                "pnl": final_pnl,
                             })
                             position = None
-
                 if position == "LONG":
                     final_gross_pnl = (h_prices[-1] - entry_price) / entry_price
                     net_pnl = final_gross_pnl - 0.0025
