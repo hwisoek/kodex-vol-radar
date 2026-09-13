@@ -1055,6 +1055,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                 rolling_low = s_prices.rolling(60).min().values
 
                 stop_loss_limit = -0.015
+                take_profit_target = 0.008
                 max_holding_bars = 40
 
                 position = None
@@ -1086,7 +1087,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                     if position is None:
                         is_calm = curr_sigma < rv_threshold
                         touched_lower = prev_p <= dyn_lower[i - 1]
-                        is_bullish_bounce = (curr_p >= prev_p * 1.001) and (curr_p > dyn_lower[i])
+                        is_bullish_bounce = (curr_p >= prev_p * 1.002) and (curr_p > dyn_lower[i])
 
                         # 🎯 스마트 레짐 필터
                         if is_real_bear:
@@ -1105,7 +1106,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                         holding_period += 1
                         current_pnl = (curr_p - entry_price) / entry_price
 
-                        is_tp = curr_p >= dyn_upper[i]
+                        is_tp = (curr_p >= dyn_upper[i]) or (current_pnl >= take_profit_target)
                         is_sl = current_pnl <= stop_loss_limit
                         is_spike = curr_sigma >= rv_threshold
                         is_timeout = holding_period >= max_holding_bars
