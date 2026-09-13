@@ -1131,11 +1131,12 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                         if not has_taken_tp1 and (curr_p >= dyn_upper[i]):
                             has_taken_tp1 = True
                             tp1_pnl = float(current_pnl)
+                            tp1_bar = holding_period  # 익절 시점 기록
 
-                        # 2) 전량 청산 조건
-                        # - 1차 익절 후: 주가가 10선 중심선(mid_line) 아래로 밀려 추세가 꺾일 때
-                        # - 익절 전: 변동성 폭발(is_spike) 또는 최대 보유기간 초과(is_timeout)
-                        is_trend_exit = has_taken_tp1 and (curr_p < mid_line[i])
+                        # 2) 전량 청산 조건 개선:
+                        # - 1차 익절 후: 10선이 아니라 완만한 20선(c_ma20)을 종가로 깰 때 진짜 추세 꺾임으로 판정
+                        # - 단, 1차 익절 직후 잔파동 털림 방지를 위해 최소 3봉 이후부터 추세 이탈 체크
+                        is_trend_exit = has_taken_tp1 and (holding_period > tp1_bar + 3) and (curr_p < c_ma20)
                         is_spike = curr_sigma >= rv_threshold
                         is_timeout = holding_period >= max_holding_bars
 
@@ -1143,7 +1144,6 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                             if is_timeout:
                                 time_over_count += 1
 
-                            # 1차 익절을 했으면 (1차 수익 50% + 최종 청산 수익 50%) 합산
                             if has_taken_tp1:
                                 final_pnl = (tp1_pnl * 0.5) + (float(current_pnl) * 0.5)
                             else:
