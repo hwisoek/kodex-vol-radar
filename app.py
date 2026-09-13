@@ -260,8 +260,7 @@ def fetch_recent_1h_candles(symbol: str):
         session = requests.Session()
         session.headers.update({"User-Agent": "Mozilla/5.0"})
         ticker = yf.Ticker(symbol, session=session)
-        # 🎯 60d -> 120d로 2배 확장 (1시간봉은 yfinance에서 최대 730일까지 지원)
-        df_1h = ticker.history(period="120d", interval="1h")
+        df_1h = ticker.history(period="60d", interval="1h")
         if df_1h is not None and not df_1h.empty and "Close" in df_1h.columns:
             df_clean = df_1h.dropna(subset=["Close", "High", "Low"])
             if len(df_clean) >= 60:
@@ -1057,7 +1056,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
 
                 stop_loss_limit = -0.015
                 take_profit_target = 0.008
-                max_holding_bars = 20  # 🎯 20봉 타임아웃 유지 (꼬리 손실 차단)
+                max_holding_bars = 60  # 추세 유지를 위해 보유 한도를 60봉
 
                 position = None
                 entry_price = 0.0
@@ -1086,16 +1085,12 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                     is_bull = curr_p > c_ma20
                     is_real_bear = (curr_p < c_ma60) and is_ma60_falling
 
-                    # 🎯 20일 이평선 우상향/플랫 판별 (3봉 전 대비 상승 또는 수평)
-                    ma20_prev3 = ma20_series[i - 3] if i >= 3 else c_ma20
-                    is_ma20_up = c_ma20 >= ma20_prev3 * 0.999
-
                     if position is None:
                         is_calm = curr_sigma < rv_threshold
                         touched_lower = prev_p <= dyn_lower[i - 1]
                         is_bullish_bounce = (curr_p >= prev_p * 1.002) and (curr_p > dyn_lower[i])
 
-                        # 🎯 최소 밴드 폭 필터
+                        # 🎯 최소 밴드 폭 필터: 
                         band_spread = (dyn_upper[i] - dyn_lower[i]) / curr_p
                         has_enough_spread = band_spread >= 0.015
 
@@ -1107,8 +1102,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                         else:
                             macro_allow = macro_pos <= 60.0
 
-                        # 🎯 is_ma20_up 추가: 20선이 우상향/플랫인 자리만 진입
-                        if is_calm and touched_lower and is_bullish_bounce and macro_allow and has_enough_spread and is_ma20_up:
+                        if is_calm and touched_lower and is_bullish_bounce and macro_allow and has_enough_spread:
                             position = "LONG"
                             entry_price = curr_p
                             entry_time = h_data["times"][i]
@@ -1437,7 +1431,7 @@ with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 &
 
         if N_total >= 30:
             rf_per_trade = (0.035 / 252.0) * (4.0 / 6.5)
-            pooled_excess = all_trades
+            pooled_excess = all_trades - rf_per_trade
 
             B = 10000
             actual_mean_total = float(np.mean(pooled_excess))
