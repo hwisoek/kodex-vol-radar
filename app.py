@@ -1615,17 +1615,13 @@ with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 &
         st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
 
         # ======================================================================
-        # 2. 🎯 당일 청산 완료(체결 확정) 실적
+        # 2. 🎯 당일 청산 완료(체결 확정) 실적 (수익률 % 기준)
         # ======================================================================
         today_data = []
         all_today_trades = []
-        tot_krw_cash = 0.0
-        tot_usd_cash = 0.0
 
         for d in full_ranked:
             asset_name = d.get("asset_name", d.get("name", d.get("symbol", "알 수 없음")))
-            currency = d.get("target_info", {}).get("currency", "원")
-            curr_price = float(d.get("current_price", 0.0))
             
             t_trades = d.get("today_trades", d.get("today_returns", []))
             if isinstance(t_trades, (int, float)):
@@ -1636,26 +1632,16 @@ with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 &
                 t_trades_arr = np.array(t_trades, dtype=float)
                 cnt = len(t_trades_arr)
                 avg_ret = float(np.mean(t_trades_arr))
+                tot_pnl = float(np.sum(t_trades_arr))
                 win_cnt = int(np.sum(t_trades_arr > 0))
-
-                base_capital = 10_000_000.0 if currency == "원" else 10_000.0
-                trade_cash_list = t_trades_arr * base_capital
-                tot_cash = float(np.sum(trade_cash_list))
-
-                if currency == "원":
-                    tot_krw_cash += tot_cash
-                    tot_cash_str = f"{int(round(tot_cash)):+,}원"
-                else:
-                    tot_usd_cash += tot_cash
-                    tot_cash_str = f"${tot_cash:+,.2f}"
 
                 today_data.append({
                     "종목명": asset_name,
                     "체결 횟수": f"{cnt}회",
                     "승률": f"{(win_cnt / cnt) * 100:.1f}%",
                     "건당 평균 수익률": f"{avg_ret * 100:+.2f}%",
-                    "오늘자 합산 수익금": tot_cash_str,
-                    "_sort_tot": tot_cash,
+                    "합산 수익률": f"{tot_pnl * 100:+.2f}%",
+                    "_sort_tot": tot_pnl,
                     "_cnt": cnt
                 })
 
@@ -1665,27 +1651,21 @@ with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 &
             total_assets_count = len(today_data)
             avg_per_trade = float(np.mean(all_today_arr))
             today_win_rate = float(np.mean(all_today_arr > 0) * 100.0)
-
-            if tot_krw_cash != 0 and tot_usd_cash != 0:
-                total_cash_display = f"{int(round(tot_krw_cash)):+,}원 / ${tot_usd_cash:+,.2f}"
-            elif tot_krw_cash != 0:
-                total_cash_display = f"{int(round(tot_krw_cash)):+,}원"
-            else:
-                total_cash_display = f"${tot_usd_cash:+,.2f}"
+            today_total_pnl = float(np.sum(all_today_arr))  # 🎯 NameError 원인이었던 합산 수익률 변수 복구
 
             t1, t2, t3, t4 = st.columns(4)
-            t1.metric("오늘 청산 종목", f"{total_assets_count}개 종목", delta=f"총 {total_today_count}회 청산")
+            t1.metric("오늘 체결 종목", f"{total_assets_count}개 종목", delta=f"총 {total_today_count}회 체결")
             t2.metric("당일 건당 평균 수익률", f"{avg_per_trade * 100:+.2f}%", delta=f"당일 승률 {today_win_rate:.1f}%")
             t3.metric(
-                "오늘자 실현 손익금", 
-                total_cash_display,
-                delta="수익 마감" if (tot_krw_cash + tot_usd_cash) >= 0 else "손실 방어 중",
-                delta_color="normal" if (tot_krw_cash + tot_usd_cash) >= 0 else "inverse"
+                "오늘자 총 합산 수익률", 
+                f"{today_total_pnl * 100:+.2f}%",
+                delta="수익 마감" if today_total_pnl >= 0 else "손실 방어 중",
+                delta_color="normal" if today_total_pnl >= 0 else "inverse"
             )
-            t4.metric("최다 청산 종목", max(today_data, key=lambda x: x["_cnt"])["종목명"])
+            t4.metric("최다 체결 종목", max(today_data, key=lambda x: x["_cnt"])["종목명"])
 
             df_today = pd.DataFrame(today_data).sort_values(by="_sort_tot", ascending=False)
-            display_cols = ["종목명", "체결 횟수", "승률", "건당 평균 수익률", "오늘자 합산 수익금"]
+            display_cols = ["종목명", "체결 횟수", "승률", "건당 평균 수익률", "합산 수익률"]
 
             with st.expander(f"📋 오늘 체결 완료 상세 보기 ({total_assets_count}개 종목)", expanded=False):
                 st.dataframe(
@@ -1693,18 +1673,19 @@ with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 &
                     use_container_width=True,
                     hide_index=True
                 )
+
             st.markdown(
                 f"""
                 <div style="font-size: 13px; color: #1e293b; line-height: 1.6; background-color: #f8fafc; padding: 12px 16px; border-radius: 8px; border: 1px solid #e2e8f0; margin-top: 10px;">
                     🎯 <b>당일 동적 가이드 집계 소견:</b><br>
-                    - 오늘 총 <b>{total_assets_count}개</b> 종목에서 <b>{total_today_count}회</b>의 가이드 시그널이 체결되었어.<br>
+                    - 오늘 총 <b>{total_assets_count}개</b> 종목에서 <b>{total_today_count}회</b>의 가이드 시그널 청산이 완료되었어.<br>
                     - 당일 건당 평균 수익률 <b>{avg_per_trade * 100:+.2f}%</b> (승률 <b>{today_win_rate:.1f}%</b>), 합산 수익률 <b>{today_total_pnl * 100:+.2f}%</b>를 기록 중이야.
                 </div>
                 """,
                 unsafe_allow_html=True
             )
         else:
-            st.info("💡 오늘 당일 체결된 동적 가이드 거래 내역이 아직 없어. (장중 시그널 대기 중)")
+            st.info("💡 오늘 당일 청산(체결 완료)된 거래 내역이 아직 없어. (장중 시그널 진행 또는 대기 중)")
 # ------------------------------------------------------------------------------
 # 8-2. 상세 종목 탭 렌더링
 # ------------------------------------------------------------------------------
