@@ -1697,8 +1697,8 @@ with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 &
                 f"""
                 <div style="font-size: 13px; color: #1e293b; line-height: 1.6; background-color: #f8fafc; padding: 12px 16px; border-radius: 8px; border: 1px solid #e2e8f0; margin-top: 10px;">
                     🎯 <b>당일 동적 가이드 집계 소견:</b><br>
-                    - 오늘 총 <b>{total_assets_count}개</b> 종목에서 <b>{total_today_count}회</b>의 가이드 시그널이 체결되었어.<br>
-                    - 당일 건당 평균 수익률 <b>{avg_per_trade * 100:+.2f}%</b> (승률 <b>{today_win_rate:.1f}%</b>), 합산 수익률 <b>{today_total_pnl * 100:+.2f}%</b>를 기록 중이야.
+                    - 오늘 총 <b>{total_assets_count}개</b> 종목에서 <b>{total_today_count}회</b>의 가이드 시그널 청산이 완료되었어.<br>
+                    - 당일 건당 평균 수익률 <b>{avg_per_trade * 100:+.2f}%</b> (승률 <b>{today_win_rate:.1f}%</b>), 총 실현 손익금 <b>{total_cash_display}</b>를 기록 중이야.
                 </div>
                 """,
                 unsafe_allow_html=True
