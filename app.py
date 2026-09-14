@@ -937,6 +937,46 @@ def analyze_60d_macro_regime(
 # ==============================================================================
 # 7. 단일 종목 연산 워커 함수 (메인 스레드에서 캐시를 주입받도록 수정)
 # ==============================================================================
+def get_asset_leverage_config(asset_name: str):
+    """
+    TICKER_MAP 종목명을 분석해 3X / 2X / 1X 배율별 최적화 매매 파라미터 반환
+    """
+    # 1. 3배 레버리지 / 인버스 (12개: TQQQ, SOXL, LABU, FNGU 등)
+    if any(kw in asset_name for kw in ["3배", "3X", "TQQQ", "SQQQ", "SOXL", "SOXS", "UPRO", "SPXU", "TNA", "TZA", "FNGU", "FNGD", "LABU", "LABD"]):
+        return {
+            "tier": "3X",
+            "dip_rate": 0.965,        # -3.5% 눌림 시 2차 매수 (잔파도 물타기 방지)
+            "dip_pct_label": "-3.5%",
+            "escape_pnl": 0.012,       # +1.2% 반등 시 본전/약익절 조기 탈출
+            "max_bars": 14,            # 최대 보유 14시간 (약 2거래일, 변동성 잠식 차단)
+            "min_band_spread": 0.030,  # 밴드 진폭 최소 3.0% 이상일 때만 진입
+            "macro_allow_cap": 45.0,   # 하락장에서 채널 위치 45% 이하에서만 진입
+        }
+
+    # 2. 2배 레버리지 / 곱버스 / 초고변동 개별주 (코스피 2배, NVDL, TSLL, CONL, MSTR 등)
+    elif any(kw in asset_name for kw in ["2배", "2X", "곱버스", "레버리지", "NVDL", "TSLL", "CONL", "MSTR", "마이크로스트래티지"]):
+        return {
+            "tier": "2X",
+            "dip_rate": 0.975,        # -2.5% 눌림 시 2차 매수
+            "dip_pct_label": "-2.5%",
+            "escape_pnl": 0.008,       # +0.8% 반등 시 조기 탈출
+            "max_bars": 24,            # 최대 보유 24시간 (약 3~4거래일)
+            "min_band_spread": 0.020,  # 밴드 진폭 최소 2.0%
+            "macro_allow_cap": 55.0,
+        }
+
+    # 3. 1배수 일반 주식 / 지수 ETF (삼성전자, SPY, QQQ 등)
+    else:
+        return {
+            "tier": "1X",
+            "dip_rate": 0.990,        # -1.0% 기본 눌림 매수
+            "dip_pct_label": "-1.0%",
+            "escape_pnl": 0.005,       # +0.5% 반등 시 조기 탈출
+            "max_bars": 60,            # 최대 보유 60시간 (기존 유지)
+            "min_band_spread": 0.015,  # 밴드 진폭 최소 1.5%
+            "macro_allow_cap": 65.0,
+        }
+
 def process_single_asset(asset_name, target_info, cached_data=None):
     is_open, time_display_str, hours_desc = get_single_market_status_text(
         target_info["tz"], target_info["is_kr"]
@@ -1025,10 +1065,11 @@ def process_single_asset(asset_name, target_info, cached_data=None):
             risk_score, channel_pos, rr_ratio, is_whipsaw_risk, trend_intensity
         )
 
-        # 60일 1시간봉 기반 백테스팅 연산 (2차 분할 매수 + 60선 필터 엔진)
+        # 60일 1시간봉 기반 백테스팅 연산 (배율별 동적 파라미터 적용)
         trade_returns = []
         time_over_count = 0
         trade_log = []
+        today_trades = []
 
         try:
             h_data = fetch_recent_1h_candles(symbol)
@@ -1047,24 +1088,27 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                 dyn_lower = mid_line * (1.0 - pred_sigmas)
                 dyn_upper = mid_line * (1.0 + pred_sigmas)
 
-                # ------------------------------------------------------
-                # 장기 가이드 롤링 지표 계산 (20선, 60선, 60일 고저 채널)
-                # ------------------------------------------------------
                 ma20_series = s_prices.rolling(20).mean().values
                 ma60_series = s_prices.rolling(60).mean().values
                 rolling_high = s_prices.rolling(60).max().values
                 rolling_low = s_prices.rolling(60).min().values
 
-                max_holding_bars = 60
-                fee_rate = 0.0020  # 실전 왕복 수수료 및 슬리피지 0.20% 차감
+                # 🎯 [핵심] 종목 배율(3X/2X/1X)별 파라미터 로드
+                lev_cfg = get_asset_leverage_config(asset_name)
+                dip_rate = lev_cfg["dip_rate"]
+                escape_target_pnl = lev_cfg["escape_pnl"]
+                max_holding_bars = lev_cfg["max_bars"]
+                min_band_spread = lev_cfg["min_band_spread"]
+                macro_allow_cap = lev_cfg["macro_allow_cap"]
+                fee_rate = 0.0020  # 왕복 수수료/슬리피지 0.20%
 
                 position = None
                 first_entry_price = 0.0
                 avg_price = 0.0
-                holding_units = 0.0  # 0.5 (1차 매수) or 1.0 (2차 분할 매수 완료)
+                holding_units = 0.0
                 entry_time = ""
-                scale_in_time = ""   # 🎯 2차 매수 시점
-                scale_in_price = 0.0 # 🎯 2차 매수 가격
+                scale_in_time = ""
+                scale_in_price = 0.0
                 holding_period = 0
                 has_taken_tp1 = False
                 tp1_pnl = 0.0
@@ -1087,27 +1131,26 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                     ma60_falling = c_ma60 < ma60_prev5 * 0.998
                     is_real_bear = (curr_p < c_ma60) and ma60_falling
 
-                    # 1) 미보유 상태: 1차 50% 분할 매수 진입 검토
+                    # 1) 미보유 상태: 1차 분할 매수 진입 검토
                     if position is None:
                         is_calm = curr_sigma < rv_threshold
                         touched_lower = prev_p <= dyn_lower[i - 1]
                         is_bullish_bounce = (curr_p >= prev_p * 1.002) and (curr_p > dyn_lower[i])
-
                         band_spread = (dyn_upper[i] - dyn_lower[i]) / curr_p
-                        has_enough_spread = band_spread >= 0.015
+                        has_enough_spread = band_spread >= min_band_spread
 
                         if is_real_bear or ma60_falling:
                             macro_allow = False
                         elif is_bull:
                             macro_allow = macro_pos <= 80.0
                         else:
-                            macro_allow = macro_pos <= 65.0
+                            macro_allow = macro_pos <= macro_allow_cap
 
                         if is_calm and touched_lower and is_bullish_bounce and macro_allow and has_enough_spread:
                             position = "LONG"
                             first_entry_price = curr_p
                             avg_price = curr_p
-                            holding_units = 0.5  # 1차 자본 50% 투입
+                            holding_units = 0.5
                             entry_time = h_data["times"][i]
                             scale_in_time = ""
                             scale_in_price = 0.0
@@ -1115,13 +1158,13 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                             has_taken_tp1 = False
                             tp1_pnl = 0.0
 
-                    # 2) 보유 상태: 2차 분할 매수 및 익절/청산 관리
+                    # 2) 보유 상태: 2차 분할 매수 및 익절/탈출 관리
                     elif position == "LONG":
                         holding_period += 1
 
-                        # 🎯 2차 매수 조건: -1.0% 추가 눌림 발생 시 잔여 50% 추가 매수 (시간/가격 기록)
+                        # 배율별 눌림폭 충족 시 2차 매수 (3X: -3.5%, 2X: -2.5%, 1X: -1.0%)
                         if holding_units == 0.5 and not has_taken_tp1:
-                            if curr_p <= first_entry_price * 0.990:
+                            if curr_p <= first_entry_price * dip_rate:
                                 avg_price = (first_entry_price + curr_p) / 2.0
                                 holding_units = 1.0
                                 scale_in_time = h_data["times"][i]
@@ -1129,17 +1172,21 @@ def process_single_asset(asset_name, target_info, cached_data=None):
 
                         current_pnl = (curr_p - avg_price) / avg_price
 
-                        # 상단 밴드 도달 시 50% 분할 익절
+                        # 상단 밴드 1차 분할 익절
                         if not has_taken_tp1 and (curr_p >= dyn_upper[i]):
                             has_taken_tp1 = True
                             tp1_pnl = float(current_pnl)
 
-                        # 전량 청산 조건
+                        # 청산 조건 분기
                         is_trend_exit = has_taken_tp1 and (curr_p < mid_line[i])
+                        # 🎯 [핵심] 2차 매수 후 반등 시 조기 탈출 모드 (평단 대비 목표 PnL 또는 중심선 회복)
+                        is_escape_exit = (holding_units == 1.0 and not has_taken_tp1) and (
+                            current_pnl >= escape_target_pnl or curr_p >= mid_line[i]
+                        )
                         is_spike = curr_sigma >= rv_threshold
                         is_timeout = holding_period >= max_holding_bars
 
-                        if is_trend_exit or is_spike or is_timeout:
+                        if is_trend_exit or is_escape_exit or is_spike or is_timeout:
                             if is_timeout:
                                 time_over_count += 1
 
@@ -1153,42 +1200,37 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                             trade_returns.append(net_final_pnl)
                             trade_log.append({
                                 "entry_time": entry_time,
-                                "entry_price": first_entry_price, # 1차 매수가
-                                "scale_in_time": scale_in_time,   # 2차 매수 시점
-                                "scale_in_price": scale_in_price, # 2차 매수가
+                                "entry_price": first_entry_price,
+                                "scale_in_time": scale_in_time,
+                                "scale_in_price": scale_in_price,
                                 "exit_time": h_data["times"][i],
                                 "exit_price": curr_p,
                                 "pnl": net_final_pnl,
-                                "scale_in": holding_units == 1.0
+                                "scale_in": holding_units == 1.0,
+                                "is_escape": is_escape_exit,
                             })
                             position = None
 
-                # 백테스팅 종료 시점 미청산 잔여분 처리
+                # 백테스팅 종료 시점 잔여 포지션 처리
                 if position == "LONG":
                     final_gross_pnl = (h_prices[-1] - avg_price) / avg_price
                     net_pnl = final_gross_pnl - fee_rate
                     trade_returns.append(float(net_pnl))
 
             # ------------------------------------------------------------------
-            # 🎯 [추가] 진짜 오늘(당일 거래일) 체결된 거래만 엄격하게 필터링
+            # 🎯 [핵심] 당일 날짜("MM/DD") 필터링 (시간 10자리 슬라이싱 버그 교정)
             # ------------------------------------------------------------------
-            # ------------------------------------------------------------------
-            # 🎯 [수정] .split()[0]을 써서 시간(HH:MM)을 떼고 순수 날짜("09/14")만 비교
-            # ------------------------------------------------------------------
-            today_trades = []
             if len(trade_log) > 0 and h_data is not None and "times" in h_data and len(h_data["times"]) > 0:
-                # "09/14 10:00" -> "09/14" 날짜만 정확히 추출
                 latest_trade_date = str(h_data["times"][-1]).split()[0]
-                
-                # 오늘 날짜("09/14")에 청산된 거래만 필터링
                 today_trades = [
                     t["pnl"] for t in trade_log 
                     if str(t.get("exit_time", "")).split()[0] == latest_trade_date
                 ]
+
         except Exception:
             trade_returns = []
             trade_log = []
-            today_trades = []  # 에러 시 빈 리스트
+            today_trades = []
 
         result_dict = {
             "asset_name": asset_name,
@@ -1218,7 +1260,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
             "raw_pred_log_rv": raw_pred_log_rv,
             "fpc_scores": fpc_scores,
             "trade_returns": trade_returns,
-            "today_trades": today_trades,  # ★ [추가] TAB 3에서 읽어갈 당일 실현 손익 리스트
+            "today_trades": today_trades,
             "trade_log": trade_log,
             "time_over_count": time_over_count,
         }
