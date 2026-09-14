@@ -938,42 +938,43 @@ def analyze_60d_macro_regime(
 # 7. 단일 종목 연산 워커 함수 (메인 스레드에서 캐시를 주입받도록 수정)
 # ==============================================================================
 def get_asset_leverage_config(asset_name: str):
-    """TICKER_MAP 종목명을 분석해 3X / 2X / 1X 배율별 최적화 매매 파라미터 반환"""
-    # 1. 3배 레버리지 / 인버스 (TQQQ, SOXL, LABU, FNGU 등)
+    """
+    TICKER_MAP 종목명을 분석해 3X / 2X / 1X 배율별 최적화 매매 파라미터 반환
+    """
+    # 1. 3배 레버리지 / 인버스 (12개: TQQQ, SOXL, LABU, FNGU 등)
     if any(kw in asset_name for kw in ["3배", "3X", "TQQQ", "SQQQ", "SOXL", "SOXS", "UPRO", "SPXU", "TNA", "TZA", "FNGU", "FNGD", "LABU", "LABD"]):
         return {
             "tier": "3X",
-            "dip_rate": 0.965,        # -3.5% 눌림 시 2차 매수
+            "dip_rate": 0.965,        # -3.5% 눌림 시 2차 매수 (잔파도 물타기 방지)
             "dip_pct_label": "-3.5%",
-            "escape_pnl": 0.012,       # +1.2% 반등 시 조기 탈출
-            "max_bars": 14,            # 최대 보유 14시간
-            "min_band_spread": 0.030,
-            "macro_allow_cap": 45.0,
-            "hard_stop": -0.150,       # 🎯 [추가] 3배수는 -15.0% 하드 손절 (노이즈 털림 방지)
+            "escape_pnl": 0.012,       # +1.2% 반등 시 본전/약익절 조기 탈출
+            "max_bars": 14,            # 최대 보유 14시간 (약 2거래일, 변동성 잠식 차단)
+            "min_band_spread": 0.030,  # 밴드 진폭 최소 3.0% 이상일 때만 진입
+            "macro_allow_cap": 45.0,   # 하락장에서 채널 위치 45% 이하에서만 진입
         }
-    # 2. 2배 레버리지 / 곱버스 / 고변동 개별주 (코스피 2배, NVDL, TSLL, CONL, MSTR 등)
+
+    # 2. 2배 레버리지 / 곱버스 / 초고변동 개별주 (코스피 2배, NVDL, TSLL, CONL, MSTR 등)
     elif any(kw in asset_name for kw in ["2배", "2X", "곱버스", "레버리지", "NVDL", "TSLL", "CONL", "MSTR", "마이크로스트래티지"]):
         return {
             "tier": "2X",
             "dip_rate": 0.975,        # -2.5% 눌림 시 2차 매수
             "dip_pct_label": "-2.5%",
             "escape_pnl": 0.008,       # +0.8% 반등 시 조기 탈출
-            "max_bars": 24,            # 최대 보유 24시간
-            "min_band_spread": 0.020,
+            "max_bars": 24,            # 최대 보유 24시간 (약 3~4거래일)
+            "min_band_spread": 0.020,  # 밴드 진폭 최소 2.0%
             "macro_allow_cap": 55.0,
-            "hard_stop": -0.100,       # 🎯 [추가] 2배수는 -10.0% 하드 손절
         }
-    # 3. 1배수 일반 주식 / 지수 ETF (삼성전자, SPY, QQQ, NVO 등)
+
+    # 3. 1배수 일반 주식 / 지수 ETF (삼성전자, SPY, QQQ 등)
     else:
         return {
             "tier": "1X",
             "dip_rate": 0.990,        # -1.0% 기본 눌림 매수
             "dip_pct_label": "-1.0%",
             "escape_pnl": 0.005,       # +0.5% 반등 시 조기 탈출
-            "max_bars": 60,            # 최대 보유 60시간
-            "min_band_spread": 0.015,
+            "max_bars": 60,            # 최대 보유 60시간 (기존 유지)
+            "min_band_spread": 0.015,  # 밴드 진폭 최소 1.5%
             "macro_allow_cap": 65.0,
-            "hard_stop": -0.065,       # 🎯 [추가] 일반주는 -6.5% 하드 손절 (NVO 장기 방치 차단)
         }
 
 def process_single_asset(asset_name, target_info, cached_data=None):
@@ -1099,7 +1100,6 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                 max_holding_bars = lev_cfg["max_bars"]
                 min_band_spread = lev_cfg["min_band_spread"]
                 macro_allow_cap = lev_cfg["macro_allow_cap"]
-                hard_stop_rate = lev_cfg["hard_stop"]  # 🎯 [추가] 배율별 하드 손절선 로드
                 fee_rate = 0.0020  # 왕복 수수료/슬리피지 0.20%
 
                 position = None
@@ -1186,8 +1186,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                         is_spike = curr_sigma >= rv_threshold
                         is_timeout = holding_period >= max_holding_bars
 
-                        # 🎯 [수정] 조건문에 is_hard_stop 추가
-                        if is_trend_exit or is_escape_exit or is_spike or is_timeout or is_hard_stop:
+                        if is_trend_exit or is_escape_exit or is_spike or is_timeout:
                             if is_timeout:
                                 time_over_count += 1
 
@@ -1209,7 +1208,6 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                                 "pnl": net_final_pnl,
                                 "scale_in": holding_units == 1.0,
                                 "is_escape": is_escape_exit,
-                                "is_hard_stop": is_hard_stop,  # 🎯 [추가] 기록용
                             })
                             position = None
 
@@ -1699,8 +1697,8 @@ with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 &
                 f"""
                 <div style="font-size: 13px; color: #1e293b; line-height: 1.6; background-color: #f8fafc; padding: 12px 16px; border-radius: 8px; border: 1px solid #e2e8f0; margin-top: 10px;">
                     🎯 <b>당일 동적 가이드 집계 소견:</b><br>
-                    - 오늘 총 <b>{total_assets_count}개</b> 종목에서 <b>{total_today_count}회</b>의 가이드 시그널 청산이 완료되었어.<br>
-                    - 당일 건당 평균 수익률 <b>{avg_per_trade * 100:+.2f}%</b> (승률 <b>{today_win_rate:.1f}%</b>), 총 실현 손익금 <b>{total_cash_display}</b>를 기록 중이야.
+                    - 오늘 총 <b>{total_assets_count}개</b> 종목에서 <b>{total_today_count}회</b>의 가이드 시그널이 체결되었어.<br>
+                    - 당일 건당 평균 수익률 <b>{avg_per_trade * 100:+.2f}%</b> (승률 <b>{today_win_rate:.1f}%</b>), 합산 수익률 <b>{today_total_pnl * 100:+.2f}%</b>를 기록 중이야.
                 </div>
                 """,
                 unsafe_allow_html=True
