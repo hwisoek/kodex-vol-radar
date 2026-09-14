@@ -1168,9 +1168,24 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                     net_pnl = final_gross_pnl - fee_rate
                     trade_returns.append(float(net_pnl))
 
+            # ------------------------------------------------------------------
+            # 🎯 [추가] 진짜 오늘(당일 거래일) 체결된 거래만 엄격하게 필터링
+            # ------------------------------------------------------------------
+            today_trades = []
+            if len(trade_log) > 0 and h_data is not None and "times" in h_data and len(h_data["times"]) > 0:
+                # 국장/미장 시차와 무관하게 가장 최근 캔들의 날짜(YYYY-MM-DD)를 '오늘 장' 기준으로 잡음
+                latest_trade_date = str(h_data["times"][-1])[:10]
+                
+                # 오늘 날짜에 청산(exit) 완료된 체결의 실현 손익만 추출
+                today_trades = [
+                    t["pnl"] for t in trade_log 
+                    if str(t.get("exit_time", ""))[:10] == latest_trade_date
+                ]
+
         except Exception:
             trade_returns = []
             trade_log = []
+            today_trades = []  # 에러 시 빈 리스트
 
         result_dict = {
             "asset_name": asset_name,
@@ -1200,12 +1215,12 @@ def process_single_asset(asset_name, target_info, cached_data=None):
             "raw_pred_log_rv": raw_pred_log_rv,
             "fpc_scores": fpc_scores,
             "trade_returns": trade_returns,
+            "today_trades": today_trades,  # ★ [추가] TAB 3에서 읽어갈 당일 실현 손익 리스트
             "trade_log": trade_log,
             "time_over_count": time_over_count,
         }
 
         return result_dict
-
     except Exception:
         if cached_data is not None:
             return cached_data
