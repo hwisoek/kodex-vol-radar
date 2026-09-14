@@ -1094,32 +1094,32 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                 rolling_low = s_prices.rolling(60).min().values
 
                 # --------------------------------------------------------------
-                # 🎯 [핵심 수정] 배율별 보유 타임아웃 축소 & 하드 손절선 인라인 적용
+                # 🎯 [수정] 2차 매수 눌림폭 대폭 확대 (노이즈 풀비중 방지 & 평단 방어력 극대화)
                 # --------------------------------------------------------------
                 is_3x = any(kw in asset_name for kw in ["3배", "3X", "TQQQ", "SQQQ", "SOXL", "SOXS", "UPRO", "SPXU", "TNA", "TZA", "FNGU", "FNGD", "LABU", "LABD"])
                 is_2x = any(kw in asset_name for kw in ["2배", "2X", "곱버스", "레버리지", "NVDL", "TSLL", "CONL", "MSTR", "마이크로스트래티지"])
 
                 if is_3x:
-                    dip_rate = 0.965
+                    dip_rate = 0.945          # 🎯 -3.5% -> -5.5% 눌림 시 2차 매수
                     escape_target_pnl = 0.012
-                    max_holding_bars = 8       # 3배수: 8시간 (약 1.2거래일 초단기 승부)
+                    max_holding_bars = 8
                     min_band_spread = 0.030
                     macro_allow_cap = 45.0
-                    hard_stop_rate = -0.150    # 3배수: -15.0%
+                    hard_stop_rate = -0.150
                 elif is_2x:
-                    dip_rate = 0.975
+                    dip_rate = 0.960          # 🎯 -2.5% -> -4.0% 눌림 시 2차 매수
                     escape_target_pnl = 0.008
-                    max_holding_bars = 14      # 2배수: 14시간 (약 2거래일 컷)
+                    max_holding_bars = 14
                     min_band_spread = 0.020
                     macro_allow_cap = 55.0
-                    hard_stop_rate = -0.100    # 2배수: -10.0%
+                    hard_stop_rate = -0.100
                 else:
-                    dip_rate = 0.990
+                    dip_rate = 0.975          # 🎯 -1.0% -> -2.5% 눌림 시 2차 매수 (1배수 핵심 수정)
                     escape_target_pnl = 0.005
-                    max_holding_bars = 24      # 1배수: 24시간 (기존 60시간 -> 약 3.5거래일 컷)
+                    max_holding_bars = 24
                     min_band_spread = 0.015
                     macro_allow_cap = 65.0
-                    hard_stop_rate = -0.065    # 1배수: -6.5% 하드 손절
+                    hard_stop_rate = -0.065
 
                 fee_rate = 0.0020  # 왕복 수수료/슬리피지 0.20%
 
