@@ -943,37 +943,37 @@ def get_asset_leverage_config(asset_name: str):
     if any(kw in asset_name for kw in ["3배", "3X", "TQQQ", "SQQQ", "SOXL", "SOXS", "UPRO", "SPXU", "TNA", "TZA", "FNGU", "FNGD", "LABU", "LABD"]):
         return {
             "tier": "3X",
-            "dip_rate": 0.965,        # -3.5% 눌림 시 2차 매수
+            "dip_rate": 0.965,
             "dip_pct_label": "-3.5%",
-            "escape_pnl": 0.012,       # +1.2% 반등 시 조기 탈출
-            "max_bars": 14,            # 최대 보유 14시간
+            "escape_pnl": 0.012,
+            "max_bars": 14,
             "min_band_spread": 0.030,
             "macro_allow_cap": 45.0,
-            "hard_stop": -0.150,       # 🎯 [추가] 3배수는 -15.0% 하드 손절 (노이즈 털림 방지)
+            "hard_stop": -0.150,  # 3X: -15%
         }
     # 2. 2배 레버리지 / 곱버스 / 고변동 개별주 (코스피 2배, NVDL, TSLL, CONL, MSTR 등)
     elif any(kw in asset_name for kw in ["2배", "2X", "곱버스", "레버리지", "NVDL", "TSLL", "CONL", "MSTR", "마이크로스트래티지"]):
         return {
             "tier": "2X",
-            "dip_rate": 0.975,        # -2.5% 눌림 시 2차 매수
+            "dip_rate": 0.975,
             "dip_pct_label": "-2.5%",
-            "escape_pnl": 0.008,       # +0.8% 반등 시 조기 탈출
-            "max_bars": 24,            # 최대 보유 24시간
+            "escape_pnl": 0.008,
+            "max_bars": 24,
             "min_band_spread": 0.020,
             "macro_allow_cap": 55.0,
-            "hard_stop": -0.100,       # 🎯 [추가] 2배수는 -10.0% 하드 손절
+            "hard_stop": -0.100,  # 2X: -10%
         }
     # 3. 1배수 일반 주식 / 지수 ETF (삼성전자, SPY, QQQ, NVO 등)
     else:
         return {
             "tier": "1X",
-            "dip_rate": 0.990,        # -1.0% 기본 눌림 매수
+            "dip_rate": 0.990,
             "dip_pct_label": "-1.0%",
-            "escape_pnl": 0.005,       # +0.5% 반등 시 조기 탈출
-            "max_bars": 60,            # 최대 보유 60시간
+            "escape_pnl": 0.005,
+            "max_bars": 60,
             "min_band_spread": 0.015,
             "macro_allow_cap": 65.0,
-            "hard_stop": -0.065,       # 🎯 [추가] 일반주는 -6.5% 하드 손절 (NVO 장기 방치 차단)
+            "hard_stop": -0.065,  # 1X: -6.5%
         }
 
 def process_single_asset(asset_name, target_info, cached_data=None):
@@ -1094,14 +1094,13 @@ def process_single_asset(asset_name, target_info, cached_data=None):
 
                 # 🎯 [핵심] 종목 배율(3X/2X/1X)별 파라미터 로드
                 lev_cfg = get_asset_leverage_config(asset_name)
-                dip_rate = lev_cfg["dip_rate"]
-                escape_target_pnl = lev_cfg["escape_pnl"]
-                max_holding_bars = lev_cfg["max_bars"]
-                min_band_spread = lev_cfg["min_band_spread"]
-                macro_allow_cap = lev_cfg["macro_allow_cap"]
-                hard_stop_rate = lev_cfg["hard_stop"]  # 🎯 [추가] 배율별 하드 손절선 로드
-                fee_rate = 0.0020  # 왕복 수수료/슬리피지 0.20%
-
+                dip_rate = lev_cfg.get("dip_rate", 0.990)
+                escape_target_pnl = lev_cfg.get("escape_pnl", 0.005)
+                max_holding_bars = lev_cfg.get("max_bars", 60)
+                min_band_spread = lev_cfg.get("min_band_spread", 0.015)
+                macro_allow_cap = lev_cfg.get("macro_allow_cap", 65.0)
+                hard_stop_rate = lev_cfg.get("hard_stop", -0.065)  # 👈 .get으로 안전하게 로드
+                fee_rate = 0.0020
                 position = None
                 first_entry_price = 0.0
                 avg_price = 0.0
