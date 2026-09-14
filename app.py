@@ -1385,7 +1385,7 @@ with tab_us:
 # ------------------------------------------------------------------------------
 st.markdown("---")
 with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 & 실전 동적 가이드 신뢰도", expanded=True):
-    tab_academic, tab_simulation = st.tabs([
+    tab_academic, tab_simulation, tab_today = st.tabs([
         "📊 1. 학술 실증 검정 (Diebold-Mariano HAC)", 
         "⚡ 2. 전 종목 통합 가이드 시뮬레이션 (60일)",
         "🎯 3. 당일 실전 체결 현황 및 성과"
