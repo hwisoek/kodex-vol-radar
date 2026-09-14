@@ -1171,17 +1171,19 @@ def process_single_asset(asset_name, target_info, cached_data=None):
             # ------------------------------------------------------------------
             # 🎯 [추가] 진짜 오늘(당일 거래일) 체결된 거래만 엄격하게 필터링
             # ------------------------------------------------------------------
+            # ------------------------------------------------------------------
+            # 🎯 [수정] .split()[0]을 써서 시간(HH:MM)을 떼고 순수 날짜("09/14")만 비교
+            # ------------------------------------------------------------------
             today_trades = []
             if len(trade_log) > 0 and h_data is not None and "times" in h_data and len(h_data["times"]) > 0:
-                # 국장/미장 시차와 무관하게 가장 최근 캔들의 날짜(YYYY-MM-DD)를 '오늘 장' 기준으로 잡음
-                latest_trade_date = str(h_data["times"][-1])[:10]
+                # "09/14 10:00" -> "09/14" 날짜만 정확히 추출
+                latest_trade_date = str(h_data["times"][-1]).split()[0]
                 
-                # 오늘 날짜에 청산(exit) 완료된 체결의 실현 손익만 추출
+                # 오늘 날짜("09/14")에 청산된 거래만 필터링
                 today_trades = [
                     t["pnl"] for t in trade_log 
-                    if str(t.get("exit_time", ""))[:10] == latest_trade_date
+                    if str(t.get("exit_time", "")).split()[0] == latest_trade_date
                 ]
-
         except Exception:
             trade_returns = []
             trade_log = []
