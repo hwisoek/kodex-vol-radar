@@ -1092,15 +1092,36 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                 rolling_high = s_prices.rolling(60).max().values
                 rolling_low = s_prices.rolling(60).min().values
 
-                # 🎯 [핵심] 종목 배율(3X/2X/1X)별 파라미터 로드
-                lev_cfg = get_asset_leverage_config(asset_name)
-                dip_rate = lev_cfg.get("dip_rate", 0.990)
-                escape_target_pnl = lev_cfg.get("escape_pnl", 0.005)
-                max_holding_bars = lev_cfg.get("max_bars", 60)
-                min_band_spread = lev_cfg.get("min_band_spread", 0.015)
-                macro_allow_cap = lev_cfg.get("macro_allow_cap", 65.0)
-                hard_stop_rate = lev_cfg.get("hard_stop", -0.065)  # 👈 .get으로 안전하게 로드
+                # --------------------------------------------------------------
+                # 🎯 [핵심] 외부 함수 없이 인라인 직접 분기 (NameError/KeyError 원천 차단)
+                # --------------------------------------------------------------
+                is_3x = any(kw in asset_name for kw in ["3배", "3X", "TQQQ", "SQQQ", "SOXL", "SOXS", "UPRO", "SPXU", "TNA", "TZA", "FNGU", "FNGD", "LABU", "LABD"])
+                is_2x = any(kw in asset_name for kw in ["2배", "2X", "곱버스", "레버리지", "NVDL", "TSLL", "CONL", "MSTR", "마이크로스트래티지"])
+
+                if is_3x:
+                    dip_rate = 0.965
+                    escape_target_pnl = 0.012
+                    max_holding_bars = 14
+                    min_band_spread = 0.030
+                    macro_allow_cap = 45.0
+                    hard_stop_rate = -0.150
+                elif is_2x:
+                    dip_rate = 0.975
+                    escape_target_pnl = 0.008
+                    max_holding_bars = 24
+                    min_band_spread = 0.020
+                    macro_allow_cap = 55.0
+                    hard_stop_rate = -0.100
+                else:
+                    dip_rate = 0.990
+                    escape_target_pnl = 0.005
+                    max_holding_bars = 60
+                    min_band_spread = 0.015
+                    macro_allow_cap = 65.0
+                    hard_stop_rate = -0.065
+
                 fee_rate = 0.0020
+
                 position = None
                 first_entry_price = 0.0
                 avg_price = 0.0
@@ -1130,7 +1151,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                     ma60_falling = c_ma60 < ma60_prev5 * 0.998
                     is_real_bear = (curr_p < c_ma60) and ma60_falling
 
-                    # 1) 미보유 상태: 1차 분할 매수 진입 검토
+                    # 1) 1차 진입
                     if position is None:
                         is_calm = curr_sigma < rv_threshold
                         touched_lower = prev_p <= dyn_lower[i - 1]
@@ -1157,11 +1178,10 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                             has_taken_tp1 = False
                             tp1_pnl = 0.0
 
-                    # 2) 보유 상태: 2차 분할 매수 및 익절/탈출 관리
+                    # 2) 보유 관리
                     elif position == "LONG":
                         holding_period += 1
 
-                        # 배율별 눌림폭 충족 시 2차 매수 (3X: -3.5%, 2X: -2.5%, 1X: -1.0%)
                         if holding_units == 0.5 and not has_taken_tp1:
                             if curr_p <= first_entry_price * dip_rate:
                                 avg_price = (first_entry_price + curr_p) / 2.0
@@ -1171,21 +1191,18 @@ def process_single_asset(asset_name, target_info, cached_data=None):
 
                         current_pnl = (curr_p - avg_price) / avg_price
 
-                        # 상단 밴드 1차 분할 익절
                         if not has_taken_tp1 and (curr_p >= dyn_upper[i]):
                             has_taken_tp1 = True
                             tp1_pnl = float(current_pnl)
 
-                        # 청산 조건 분기
                         is_trend_exit = has_taken_tp1 and (curr_p < mid_line[i])
-                        # 🎯 [핵심] 2차 매수 후 반등 시 조기 탈출 모드 (평단 대비 목표 PnL 또는 중심선 회복)
                         is_escape_exit = (holding_units == 1.0 and not has_taken_tp1) and (
                             current_pnl >= escape_target_pnl or curr_p >= mid_line[i]
                         )
                         is_spike = curr_sigma >= rv_threshold
                         is_timeout = holding_period >= max_holding_bars
+                        is_hard_stop = current_pnl <= hard_stop_rate
 
-                        # 🎯 [수정] 조건문에 is_hard_stop 추가
                         if is_trend_exit or is_escape_exit or is_spike or is_timeout or is_hard_stop:
                             if is_timeout:
                                 time_over_count += 1
@@ -1208,35 +1225,30 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                                 "pnl": net_final_pnl,
                                 "scale_in": holding_units == 1.0,
                                 "is_escape": is_escape_exit,
-                                "is_hard_stop": is_hard_stop,  # 🎯 [추가] 기록용
+                                "is_hard_stop": is_hard_stop,
                             })
                             position = None
 
-                # --------------------------------------------------------------
-                # 🎯 [수정] 백테스팅 종료 시점 미청산 잔여분 처리 & current_holding 패킹
-                # --------------------------------------------------------------
+                # 미청산 포지션 패킹
                 current_holding = None
                 if position == "LONG":
                     final_gross_pnl = (h_prices[-1] - avg_price) / avg_price
                     net_pnl = final_gross_pnl - fee_rate
                     trade_returns.append(float(net_pnl))
 
-                    # 실시간 미청산 포지션 정보 패킹
                     current_holding = {
                         "entry_time": entry_time,
                         "entry_price": first_entry_price,
                         "avg_price": avg_price,
                         "current_price": float(h_prices[-1]),
-                        "holding_units": holding_units,      # 0.5 (1차 50%) or 1.0 (2차 100%)
-                        "holding_bars": holding_period,      # 보유 경과 시간(봉 개수)
+                        "holding_units": holding_units,
+                        "holding_bars": holding_period,
                         "scale_in_time": scale_in_time,
                         "scale_in_price": scale_in_price,
-                        "unrealized_pnl": float(net_pnl),    # 수수료 차감 후 평가수익률
+                        "unrealized_pnl": float(net_pnl),
                     }
 
-            # ------------------------------------------------------------------
-            # 🎯 당일 날짜("MM/DD") 필터링
-            # ------------------------------------------------------------------
+            # 당일 청산 필터
             if len(trade_log) > 0 and h_data is not None and "times" in h_data and len(h_data["times"]) > 0:
                 latest_trade_date = str(h_data["times"][-1]).split()[0]
                 today_trades = [
@@ -1244,11 +1256,13 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                     if str(t.get("exit_time", "")).split()[0] == latest_trade_date
                 ]
 
-        except Exception:
+        except Exception as e:
+            import traceback
+            print(f"🚨 [{asset_name}] 에러 상세: {traceback.format_exc()}")
             trade_returns = []
             trade_log = []
             today_trades = []
-            current_holding = None  # 에러 발생 시 None 안전 초기화
+            current_holding = None
 
         result_dict = {
             "asset_name": asset_name,
