@@ -1562,16 +1562,16 @@ with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 &
             
             # DataFrame 생성 및 정렬 (합산 수익률 기준 내림차순)
             import pandas as pd
-            df_today = pd.DataFrame(today_data)
-            df_today = df_today.sort_values(by="_sort_tot", ascending=False)
+            df_today = pd.DataFrame(today_data).sort_values(by="_sort_tot", ascending=False)
             display_cols = ["종목명", "체결 횟수", "승률", "건당 평균 수익률", "오늘자 합산 수익률"]
 
-            st.dataframe(
-                df_today[display_cols],
-                use_container_width=True,
-                hide_index=True
-            )
-
+            # [수정] 접었다 펼 수 있는 expander로 변경
+            with st.expander(f"📋 종목별 실시간 체결 상세 보기 ({total_assets_count}개 종목)", expanded=False):
+                st.dataframe(
+                    df_today[display_cols],
+                    use_container_width=True,
+                    hide_index=True
+                )
             st.markdown(
                 f"""
                 <div style="font-size: 13px; color: #1e293b; line-height: 1.6; background-color: #f8fafc; padding: 12px 16px; border-radius: 8px; border: 1px solid #e2e8f0; margin-top: 10px;">
