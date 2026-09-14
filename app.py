@@ -1088,7 +1088,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                 rolling_rv = (clean_pct_chg**2).rolling(12, min_periods=3).mean().fillna(1e-5).values
                 pred_sigmas = np.sqrt(np.maximum(rolling_rv, 1e-6))
 
-                # 🎯 [수정] 전체 배열 퍼센타일 대신 롤링 윈도우 퍼센타일 적용 (Look-ahead Bias 원천 차단)
+                # 1. 룩어헤드 바이어스 없는 롤링 퍼센타일 배열 생성 (전체 배열 방식 대체)
                 s_sigmas = pd.Series(pred_sigmas)
                 rolling_rv_thresholds = s_sigmas.rolling(window=48, min_periods=12).quantile(0.80).bfill().values
 
@@ -1100,6 +1100,30 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                 ma60_series = s_prices.rolling(60).mean().values
                 rolling_high = s_prices.rolling(60).max().values
                 rolling_low = s_prices.rolling(60).min().values
+
+                position = None
+                trade_log = []
+                trade_returns = []
+                first_entry_price = 0.0
+                scale_in_price = 0.0
+                entry_time = ""
+                scale_in_time = ""
+                holding_units = 0.0
+                time_over_count = 0
+                has_taken_tp1 = False
+
+                # 2. 장중 마지막 미완성 봉 제외 (eval_end_idx 적용)
+                eval_end_idx = len(h_prices) - 1 if market_is_open else len(h_prices)
+
+                for i in range(60, eval_end_idx):
+                    curr_p = h_prices[i]
+                    prev_p = h_prices[i - 1]
+                    curr_sigma = pred_sigmas[i]
+                    
+                    # 3. 기존 코드 변수명(rv_threshold) 그대로 매칭되도록 롤링 값 대입
+                    rv_threshold = rolling_rv_thresholds[i]
+
+                    # (이 아래부터는 기존에 쓰던 조건문 및 매매/청산 로직 그대로 이어짐)
 
                 # --------------------------------------------------------------
                 # 🎯 [수정] 2차 매수 눌림폭 대폭 확대 (노이즈 풀비중 방지 & 평단 방어력 극대화)
