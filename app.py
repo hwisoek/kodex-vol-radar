@@ -2022,7 +2022,7 @@ for tab, data in zip(tabs, display_targets):
 
                 fig_long = go.Figure()
                 
-                # 60일 종가
+                # 1. 60일 종가 라인
                 fig_long.add_trace(go.Scatter(
                     x=h_times, 
                     y=h_closes, 
@@ -2031,18 +2031,21 @@ for tab, data in zip(tabs, display_targets):
                     line=dict(color="#059669", width=1.8)
                 ))
 
-                # 2. 백테스트 체결 마커 및 음영
+                # 2. 백테스트 체결 마커 및 음영 (텍스트 겹침 방지 보정)
                 trade_log = data.get("trade_log", [])
                 if trade_log:
                     for idx, trade in enumerate(trade_log):
                         is_profit = trade["pnl"] > 0
-                        fill_col = "rgba(239, 68, 68, 0.15)" if is_profit else "rgba(59, 130, 246, 0.15)"
+                        fill_col = "rgba(239, 68, 68, 0.12)" if is_profit else "rgba(59, 130, 246, 0.12)"
                         line_col = "rgba(239, 68, 68, 0.3)" if is_profit else "rgba(59, 130, 246, 0.3)"
-                        pos = "top left" if idx % 2 == 0 else "top right"
+                        
+                        scale_text = " (2차)" if trade.get("scale_in", False) else ""
+                        pnl_str = f"{'+' if is_profit else ''}{trade['pnl']*100:.1f}%{scale_text}"
 
-                        scale_text = " (2차완료)" if trade.get("scale_in", False) else ""
+                        # [개선 1] 연속 체결 시 상단 텍스트 3단 높이 분산 (겹침 원천 방지)
+                        y_offsets = [12, 26, 40]
+                        chosen_yshift = y_offsets[idx % 3]
 
-                        # 기본 보유 구간 음영
                         fig_long.add_vrect(
                             x0=trade["entry_time"],
                             x1=trade["exit_time"],
@@ -2051,30 +2054,36 @@ for tab, data in zip(tabs, display_targets):
                             layer="below",
                             line_width=1,
                             line_color=line_col,
-                            annotation_text=f"{'+' if is_profit else ''}{trade['pnl']*100:.1f}%{scale_text}",
-                            annotation_position=pos,
+                            annotation_text=pnl_str,
+                            annotation_position="top left",
                             annotation=dict(
-                                font=dict(size=9, color="#b91c1c" if is_profit else "#1d4ed8", family="Arial"),
-                                yshift=10 if idx % 2 == 0 else -5,
+                                font=dict(size=8.5, color="#b91c1c" if is_profit else "#1d4ed8", family="Arial Black"),
+                                yshift=chosen_yshift,
+                                bgcolor="rgba(255, 255, 255, 0.8)", # 흰색 배경으로 캔들선 간섭 차단
+                                bordercolor=line_col,
+                                borderwidth=0.5,
+                                borderpad=2,
                             ),
                         )
 
-                        # 2차 매수 발생 구간 주황색 음영 띠
+                        # [개선 2] 2차 매수 구간 하단 띠 텍스트 간결화
                         if trade.get("scale_in", False) and trade.get("scale_in_time"):
                             fig_long.add_vrect(
                                 x0=trade["scale_in_time"],
                                 x1=trade["exit_time"],
-                                fillcolor="rgba(245, 158, 11, 0.28)",
+                                fillcolor="rgba(245, 158, 11, 0.25)",
                                 opacity=1.0,
                                 layer="below",
-                                line_width=1.5,
+                                line_width=1,
                                 line_dash="dot",
-                                line_color="rgba(217, 119, 6, 0.7)",
-                                annotation_text="2차 비중 100%",
+                                line_color="rgba(217, 119, 6, 0.6)",
+                                annotation_text="2차(100%)",
                                 annotation_position="bottom left",
                                 annotation=dict(
-                                    font=dict(size=8, color="#b45309", family="Arial"),
-                                    yshift=5,
+                                    font=dict(size=7.5, color="#b45309", family="Arial"),
+                                    yshift=4 + (idx % 2) * 10, # 하단 라벨도 2단 교차
+                                    bgcolor="rgba(255, 255, 255, 0.7)",
+                                    borderpad=1,
                                 ),
                             )
 
@@ -2082,11 +2091,8 @@ for tab, data in zip(tabs, display_targets):
                     buy_t = [t["entry_time"] for t in trade_log]
                     buy_p = [t["entry_price"] for t in trade_log]
                     fig_long.add_trace(go.Scatter(
-                        x=buy_t,
-                        y=buy_p,
-                        mode="markers",
-                        name="1차 매수 (50%)",
-                        marker=dict(symbol="triangle-up", size=11, color="#10b981", line=dict(width=1, color="#ffffff")),
+                        x=buy_t, y=buy_p, mode="markers", name="1차 매수 (50%)",
+                        marker=dict(symbol="triangle-up", size=10, color="#10b981", line=dict(width=1, color="#ffffff")),
                         hovertemplate="<b>[1차 매수]</b> %{y:,.2f}<br>일시: %{x}<extra></extra>"
                     ))
 
@@ -2096,9 +2102,8 @@ for tab, data in zip(tabs, display_targets):
                         fig_long.add_trace(go.Scatter(
                             x=[t["scale_in_time"] for t in scale_trades],
                             y=[t["scale_in_price"] for t in scale_trades],
-                            mode="markers",
-                            name="2차 눌림 매수 (-1%)",
-                            marker=dict(symbol="diamond", size=11, color="#f59e0b", line=dict(width=1.5, color="#ffffff")),
+                            mode="markers", name="2차 눌림 매수 (-1%)",
+                            marker=dict(symbol="diamond", size=10, color="#f59e0b", line=dict(width=1, color="#ffffff")),
                             hovertemplate="<b>[2차 매수 체결]</b> %{y:,.2f}<br>일시: %{x}<extra></extra>"
                         ))
 
@@ -2108,9 +2113,8 @@ for tab, data in zip(tabs, display_targets):
                         fig_long.add_trace(go.Scatter(
                             x=[t["exit_time"] for t in win_trades],
                             y=[t["exit_price"] for t in win_trades],
-                            mode="markers",
-                            name="익절 매도 (+)",
-                            marker=dict(symbol="triangle-down", size=11, color="#ef4444", line=dict(width=1, color="#ffffff")),
+                            mode="markers", name="익절 매도 (+)",
+                            marker=dict(symbol="triangle-down", size=10, color="#ef4444", line=dict(width=1, color="#ffffff")),
                             customdata=[t["pnl"] * 100 for t in win_trades],
                             hovertemplate="<b>[익절]</b> %{y:,.2f} (+%{customdata:.2f}%)<br>일시: %{x}<extra></extra>"
                         ))
@@ -2121,79 +2125,58 @@ for tab, data in zip(tabs, display_targets):
                         fig_long.add_trace(go.Scatter(
                             x=[t["exit_time"] for t in loss_trades],
                             y=[t["exit_price"] for t in loss_trades],
-                            mode="markers",
-                            name="손절 매도 (-)",
-                            marker=dict(symbol="triangle-down", size=11, color="#3b82f6", line=dict(width=1, color="#ffffff")),
+                            mode="markers", name="손절 매도 (-)",
+                            marker=dict(symbol="triangle-down", size=10, color="#3b82f6", line=dict(width=1, color="#ffffff")),
                             customdata=[t["pnl"] * 100 for t in loss_trades],
                             hovertemplate="<b>[손절]</b> %{y:,.2f} (%{customdata:.2f}%)<br>일시: %{x}<extra></extra>"
                         ))
 
-                # 3. 5일 통계적 변동성 상/하한 밴드
+                # 3. 5일 변동성 상/하한 밴드
                 fig_long.add_trace(go.Scatter(
-                    x=future_labels_swing, 
-                    y=future_lower_swing, 
-                    mode="lines", 
-                    name="5D 하한 지지선", 
+                    x=future_labels_swing, y=future_lower_swing, mode="lines", name="5D 하한 지지선",
                     line=dict(color="rgba(16,185,129,0.6)", width=1.5, dash="dot")
                 ))
                 fig_long.add_trace(go.Scatter(
-                    x=future_labels_swing, 
-                    y=future_upper_swing, 
-                    mode="lines", 
-                    name="5D 상한 저항선", 
+                    x=future_labels_swing, y=future_upper_swing, mode="lines", name="5D 상한 저항선",
                     line=dict(color="rgba(239,68,68,0.6)", width=1.5, dash="dot"), 
-                    fill="tonexty", 
-                    fillcolor="rgba(16,185,129,0.06)"
+                    fill="tonexty", fillcolor="rgba(16,185,129,0.06)"
                 ))
 
-                # 4. 미래 실행 기준선 (1차 50% 분할 익절선 & 2차 눌림 매수선)
+                # 4. 미래 실행 기준선
                 fig_long.add_trace(go.Scatter(
-                    x=future_labels_swing,
-                    y=[tp1_target] * len(future_labels_swing),
-                    mode="lines",
-                    name="1차 50% 분할 익절선",
-                    line=dict(color="#dc2626", width=2.0, dash="dash"),
-                    hovertemplate=f"<b>[1차 50% 분할 익절]</b> {fmt(tp1_target)}<extra></extra>"
+                    x=future_labels_swing, y=[tp1_target] * len(future_labels_swing), mode="lines",
+                    name="1차 50% 분할 익절선", line=dict(color="#dc2626", width=1.8, dash="dash")
                 ))
-
                 fig_long.add_trace(go.Scatter(
-                    x=future_labels_swing,
-                    y=[buy2_price] * len(future_labels_swing),
-                    mode="lines",
-                    name="2차 눌림 매수선 (-1%)",
-                    line=dict(color="#047857", width=2.0, dash="dash"),
-                    hovertemplate=f"<b>[2차 50% 분할 매수]</b> {fmt(buy2_price)}<extra></extra>"
+                    x=future_labels_swing, y=[buy2_price] * len(future_labels_swing), mode="lines",
+                    name="2차 눌림 매수선 (-1%)", line=dict(color="#047857", width=1.8, dash="dash")
                 ))
 
+                # 현재 시점 분기선
                 fig_long.add_shape(
-                    type="line", 
-                    x0=last_h_time, 
-                    x1=last_h_time, 
-                    y0=0, 
-                    y1=1, 
-                    yref="paper", 
+                    type="line", x0=last_h_time, x1=last_h_time, y0=0, y1=1, yref="paper",
                     line=dict(color="#64748b", width=1.5, dash="dash")
                 )
 
                 # --------------------------------------------------------------
-                # X축 라벨 겹침 방지 틱 최적화 (주말 인접 틱 배제 & 초 단위 제거)
+                # [개선 3] X축 라벨 겹침 원천 차단 (우측 끝단 단일 라벨화)
                 # --------------------------------------------------------------
                 stride_h = max(len(h_times) // 5, 1)
                 
-                # 마지막 봉(last_h_time)과 너무 가까운 틱(최소 stride_h * 0.7 이상)은 원천 배제
-                min_safe_gap = max(int(stride_h * 0.7), 5)
+                # 마지막 봉 기준 최소 15개 봉(약 2일치) 이전까지만 과거 틱 배치
                 past_ticks_h = [
-                    h_times[i] for i in range(0, len(h_times) - min_safe_gap, stride_h)
+                    h_times[i] for i in range(0, len(h_times) - 15, stride_h)
                 ]
                 
-                # 표시할 틱 좌표 (마지막 봉 + D+2 + D+5)
-                custom_ticks_swing = past_ticks_h + [last_h_time, "D+2", "D+5"]
-                
-                # 라벨 텍스트 축약 함수 (YYYY-MM-DD HH:MM:SS -> MM/DD HH:MM)
+                # 마지막 봉(현재)과 미래 끝단(D+5)만 딱 배치하여 겹침 방지
+                custom_ticks_swing = past_ticks_h + [last_h_time, "D+5"]
+
                 def clean_time_label(t):
                     s = str(t)
+                    if s == "D+5":
+                        return "D+5 (예측)"
                     if len(s) >= 16 and "-" in s:
-                        return s[5:16]  # '2026-09-14 09:00:00' -> '09/14 09:00'
+                        return s[5:16]  # '2026-09-14 09:30' -> '09/14 09:30'
                     return s
 
                 custom_tick_labels = [clean_time_label(t) for t in custom_ticks_swing]
@@ -2202,15 +2185,14 @@ for tab, data in zip(tabs, display_targets):
                     title=dict(
                         text="<b>60일 궤적 & 5일 분할매매(2차매수·분할익절) 로드맵</b>",
                         font=dict(size=14, color="#1e293b"),
-                        x=0.0,
-                        y=0.98,
+                        x=0.0, y=0.98,
                     ),
                     xaxis=dict(
                         title="타임라인 (1H / D+일자)",
                         type="category",
                         tickmode="array",
                         tickvals=custom_ticks_swing,
-                        ticktext=custom_tick_labels,  # ★ 축약된 깔끔한 라벨 적용
+                        ticktext=custom_tick_labels,
                         gridcolor="#f1f5f9",
                         tickangle=-25,
                     ),
