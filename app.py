@@ -1496,7 +1496,8 @@ with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 &
 
         for d in full_ranked:
             # 종목명 / 티커 키 가져오기 (데이터 필드에 맞게 fallback 처리)
-            asset_name = d.get("name", d.get("symbol", d.get("ticker", "알 수 없음")))
+            # [추천] d.get("asset_name")을 최우선으로 탐색
+            asset_name = d.get("asset_name", d.get("name", d.get("symbol", "알 수 없음")))
             
             # 당일 체결 수익률 리스트 (단일 수치 또는 리스트 대응)
             t_trades = d.get("today_trades", d.get("today_returns", []))
