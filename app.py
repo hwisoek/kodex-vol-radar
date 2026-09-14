@@ -1146,8 +1146,8 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                     curr_p = h_prices[i]
                     prev_p = h_prices[i - 1]
                     curr_sigma = pred_sigmas[i]
-                    # 🎯 [추가] 해당 시점의 과거 누적 80분위수 가져오기
-                    curr_rv_threshold = rolling_rv_thresholds[i]
+                    # 🎯 [수정] 변수 이름 그대로 유지: 기존 조건문들이 찾는 rv_threshold에 롤링 값 대입
+                    rv_threshold = rolling_rv_thresholds[i]
 
                     c_ma20 = ma20_series[i]
                     c_ma60 = ma60_series[i]
