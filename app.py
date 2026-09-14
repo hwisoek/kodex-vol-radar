@@ -14,13 +14,19 @@ import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 import yfinance as yf
 # ==============================================================================
-# 0. 세션 스테이트 초기화 (장 마감 종목 캐시 저장소)
+# 0. 세션 스테이트 초기화 (장 마감 종목 캐시 및 확정 거래 누적 저장소)
 # ==============================================================================
 if "closed_asset_cache" not in st.session_state:
     st.session_state["closed_asset_cache"] = {}
 
 if "h_data_cache" not in st.session_state:
     st.session_state["h_data_cache"] = {}
+
+# 🎯 [추가] 새로고침에도 체결 내역이 증발하지 않도록 영구 누적하는 세션 저장소
+if "confirmed_trades" not in st.session_state:
+    st.session_state["confirmed_trades"] = []
+if "seen_trade_ids" not in st.session_state:
+    st.session_state["seen_trade_ids"] = set()
 
 # ==============================================================================
 # 1. 페이지 레이아웃 및 자동 새로고침 설정
@@ -1082,7 +1088,9 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                 rolling_rv = (clean_pct_chg**2).rolling(12, min_periods=3).mean().fillna(1e-5).values
                 pred_sigmas = np.sqrt(np.maximum(rolling_rv, 1e-6))
 
-                rv_threshold = float(np.nanpercentile(pred_sigmas, 80))
+                # 🎯 [수정] 전체 배열 퍼센타일 대신 롤링 윈도우 퍼센타일 적용 (Look-ahead Bias 원천 차단)
+                s_sigmas = pd.Series(pred_sigmas)
+                rolling_rv_thresholds = s_sigmas.rolling(window=48, min_periods=12).quantile(0.80).bfill().values
 
                 mid_line = s_prices.ewm(span=10).mean().values
                 dyn_lower = mid_line * (1.0 - pred_sigmas)
@@ -1138,6 +1146,8 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                     curr_p = h_prices[i]
                     prev_p = h_prices[i - 1]
                     curr_sigma = pred_sigmas[i]
+                    # 🎯 [추가] 해당 시점의 과거 누적 80분위수 가져오기
+                    curr_rv_threshold = rolling_rv_thresholds[i]
 
                     c_ma20 = ma20_series[i]
                     c_ma60 = ma60_series[i]
