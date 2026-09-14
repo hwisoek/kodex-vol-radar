@@ -2175,9 +2175,28 @@ for tab, data in zip(tabs, display_targets):
                     line=dict(color="#64748b", width=1.5, dash="dash")
                 )
 
+                # --------------------------------------------------------------
+                # X축 라벨 겹침 방지 틱 최적화 (주말 인접 틱 배제 & 초 단위 제거)
+                # --------------------------------------------------------------
                 stride_h = max(len(h_times) // 5, 1)
-                past_ticks_h = [h_times[i] for i in range(0, len(h_times) - 1, stride_h)]
+                
+                # 마지막 봉(last_h_time)과 너무 가까운 틱(최소 stride_h * 0.7 이상)은 원천 배제
+                min_safe_gap = max(int(stride_h * 0.7), 5)
+                past_ticks_h = [
+                    h_times[i] for i in range(0, len(h_times) - min_safe_gap, stride_h)
+                ]
+                
+                # 표시할 틱 좌표 (마지막 봉 + D+2 + D+5)
                 custom_ticks_swing = past_ticks_h + [last_h_time, "D+2", "D+5"]
+                
+                # 라벨 텍스트 축약 함수 (YYYY-MM-DD HH:MM:SS -> MM/DD HH:MM)
+                def clean_time_label(t):
+                    s = str(t)
+                    if len(s) >= 16 and "-" in s:
+                        return s[5:16]  # '2026-09-14 09:00:00' -> '09/14 09:00'
+                    return s
+
+                custom_tick_labels = [clean_time_label(t) for t in custom_ticks_swing]
 
                 fig_long.update_layout(
                     title=dict(
@@ -2191,6 +2210,7 @@ for tab, data in zip(tabs, display_targets):
                         type="category",
                         tickmode="array",
                         tickvals=custom_ticks_swing,
+                        ticktext=custom_tick_labels,  # ★ 축약된 깔끔한 라벨 적용
                         gridcolor="#f1f5f9",
                         tickangle=-25,
                     ),
