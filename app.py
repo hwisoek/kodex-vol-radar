@@ -1,3 +1,4 @@
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, time, timedelta
 import xml.etree.ElementTree as ET
@@ -1505,19 +1506,18 @@ with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 &
         else:
             st.info("💡 통합 검증을 위한 전체 유니버스 체결 데이터 표본을 계산 중입니다.")
     # --------------------------------------------------------------------------
-    # TAB 3: 오늘 체결된 종목별 현황 및 당일 수익률/수익금 집계
+    # TAB 3: 오늘 체결된 종목별 현황 및 당일 수익률 집계
     # --------------------------------------------------------------------------
     with tab_today:
         today_data = []
         all_today_trades = []
-        tot_krw_cash = 0.0
-        tot_usd_cash = 0.0
 
         for d in full_ranked:
+            # 종목명 / 티커 키 가져오기 (데이터 필드에 맞게 fallback 처리)
+            # [추천] d.get("asset_name")을 최우선으로 탐색
             asset_name = d.get("asset_name", d.get("name", d.get("symbol", "알 수 없음")))
-            currency = d.get("target_info", {}).get("currency", "원")
-            curr_price = float(d.get("current_price", 0.0))
             
+            # 당일 체결 수익률 리스트 (단일 수치 또는 리스트 대응)
             t_trades = d.get("today_trades", d.get("today_returns", []))
             if isinstance(t_trades, (int, float)):
                 t_trades = [t_trades]
@@ -1527,68 +1527,48 @@ with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 &
                 t_trades_arr = np.array(t_trades, dtype=float)
                 cnt = len(t_trades_arr)
                 avg_ret = float(np.mean(t_trades_arr))
+                tot_ret = float(np.sum(t_trades_arr))
                 win_cnt = int(np.sum(t_trades_arr > 0))
-
-                # --------------------------------------------------------------
-                # 💰 [수익금 계산 기준]
-                # 옵션 1: 1회 진입 기준 자본금 (국내 1,000만 원 / 미국 $10,000)
-                base_capital = 10_000_000.0 if currency == "원" else 10_000.0
-                
-                # 옵션 2: 1주 매매 기준 손익금으로 하려면 아래 주석을 해제
-                # base_capital = curr_price
-                # --------------------------------------------------------------
-
-                trade_cash_list = t_trades_arr * base_capital
-                tot_cash = float(np.sum(trade_cash_list))
-
-                if currency == "원":
-                    tot_krw_cash += tot_cash
-                    tot_cash_str = f"{int(round(tot_cash)):+,}원"
-                else:
-                    tot_usd_cash += tot_cash
-                    tot_cash_str = f"${tot_cash:+,.2f}"
 
                 today_data.append({
                     "종목명": asset_name,
                     "체결 횟수": f"{cnt}회",
                     "승률": f"{(win_cnt / cnt) * 100:.1f}%",
                     "건당 평균 수익률": f"{avg_ret * 100:+.2f}%",
-                    "오늘자 합산 수익금": tot_cash_str,  # ★ [수정] 수익률 -> 통화별 수익금
-                    "_sort_tot": tot_cash,              # 수익금 기준으로 내림차순 정렬
+                    "오늘자 합산 수익률": f"{tot_ret * 100:+.2f}%",
+                    "_sort_tot": tot_ret,
                     "_cnt": cnt
                 })
 
         if len(today_data) > 0:
-            import pandas as pd
+            # 전체 통합 집계
             all_today_arr = np.array(all_today_trades, dtype=float)
             total_today_count = len(all_today_arr)
             total_assets_count = len(today_data)
             avg_per_trade = float(np.mean(all_today_arr))
+            today_total_pnl = float(np.sum(all_today_arr))
             today_win_rate = float(np.mean(all_today_arr > 0) * 100.0)
 
-            # 상단 합산 손익 문자열 포맷팅 (국장/미장 혼합 고려)
-            if tot_krw_cash != 0 and tot_usd_cash != 0:
-                total_cash_display = f"{int(round(tot_krw_cash)):+,}원 / ${tot_usd_cash:+,.2f}"
-            elif tot_krw_cash != 0:
-                total_cash_display = f"{int(round(tot_krw_cash)):+,}원"
-            else:
-                total_cash_display = f"${tot_usd_cash:+,.2f}"
-
+            # 상단 핵심 메트릭 4종
             t1, t2, t3, t4 = st.columns(4)
             t1.metric("오늘 체결 종목", f"{total_assets_count}개 종목", delta=f"총 {total_today_count}회 체결")
             t2.metric("당일 건당 평균 수익률", f"{avg_per_trade * 100:+.2f}%", delta=f"당일 승률 {today_win_rate:.1f}%")
             t3.metric(
-                "오늘자 총 합산 수익금",  # ★ [수정] 상단 메트릭도 수익금으로 변경
-                total_cash_display,
-                delta="수익 구간" if (tot_krw_cash + tot_usd_cash) >= 0 else "손실 방어 중",
-                delta_color="normal" if (tot_krw_cash + tot_usd_cash) >= 0 else "inverse"
+                "오늘자 총 합산 수익률", 
+                f"{today_total_pnl * 100:+.2f}%",
+                delta="수익 마감" if today_total_pnl >= 0 else "손실 방어 중",
+                delta_color="normal" if today_total_pnl >= 0 else "inverse"
             )
             t4.metric("최다 체결 종목", max(today_data, key=lambda x: x["_cnt"])["종목명"])
 
-            # DataFrame 컬럼명 반영
+            st.markdown("##### 📋 종목별 실시간 체결 상세")
+            
+            # DataFrame 생성 및 정렬 (합산 수익률 기준 내림차순)
+            import pandas as pd
             df_today = pd.DataFrame(today_data).sort_values(by="_sort_tot", ascending=False)
-            display_cols = ["종목명", "체결 횟수", "승률", "건당 평균 수익률", "오늘자 합산 수익금"]
+            display_cols = ["종목명", "체결 횟수", "승률", "건당 평균 수익률", "오늘자 합산 수익률"]
 
+            # [수정] 접었다 펼 수 있는 expander로 변경
             with st.expander(f"📋 종목별 실시간 체결 상세 보기 ({total_assets_count}개 종목)", expanded=False):
                 st.dataframe(
                     df_today[display_cols],
