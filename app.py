@@ -1211,14 +1211,30 @@ def process_single_asset(asset_name, target_info, cached_data=None):
                             })
                             position = None
 
-                # 백테스팅 종료 시점 잔여 포지션 처리
+                # --------------------------------------------------------------
+                # 🎯 [수정] 백테스팅 종료 시점 미청산 잔여분 처리 & current_holding 패킹
+                # --------------------------------------------------------------
+                current_holding = None
                 if position == "LONG":
                     final_gross_pnl = (h_prices[-1] - avg_price) / avg_price
                     net_pnl = final_gross_pnl - fee_rate
                     trade_returns.append(float(net_pnl))
 
+                    # 실시간 미청산 포지션 정보 패킹
+                    current_holding = {
+                        "entry_time": entry_time,
+                        "entry_price": first_entry_price,
+                        "avg_price": avg_price,
+                        "current_price": float(h_prices[-1]),
+                        "holding_units": holding_units,      # 0.5 (1차 50%) or 1.0 (2차 100%)
+                        "holding_bars": holding_period,      # 보유 경과 시간(봉 개수)
+                        "scale_in_time": scale_in_time,
+                        "scale_in_price": scale_in_price,
+                        "unrealized_pnl": float(net_pnl),    # 수수료 차감 후 평가수익률
+                    }
+
             # ------------------------------------------------------------------
-            # 🎯 [핵심] 당일 날짜("MM/DD") 필터링 (시간 10자리 슬라이싱 버그 교정)
+            # 🎯 당일 날짜("MM/DD") 필터링
             # ------------------------------------------------------------------
             if len(trade_log) > 0 and h_data is not None and "times" in h_data and len(h_data["times"]) > 0:
                 latest_trade_date = str(h_data["times"][-1]).split()[0]
@@ -1231,6 +1247,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
             trade_returns = []
             trade_log = []
             today_trades = []
+            current_holding = None  # 에러 발생 시 None 안전 초기화
 
         result_dict = {
             "asset_name": asset_name,
@@ -1263,6 +1280,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
             "today_trades": today_trades,
             "trade_log": trade_log,
             "time_over_count": time_over_count,
+            "current_holding": current_holding,  # ★ [추가] TAB 3에서 읽어갈 미청산 보유 데이터
         }
 
         return result_dict
@@ -1551,15 +1569,64 @@ with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 &
     # TAB 3: 오늘 체결된 종목별 현황 및 당일 수익률 집계
     # --------------------------------------------------------------------------
     with tab_today:
+        # ======================================================================
+        # 1. 💼 현재 보유 중인 포지션 (실시간 진행형)
+        # ======================================================================
+        holding_rows = []
+        for d in full_ranked:
+            holding = d.get("current_holding")
+            if holding is not None:
+                currency = d.get("target_info", {}).get("currency", "원")
+                base_cap = 10_000_000.0 if currency == "원" else 10_000.0
+                unrealized_cash = holding["unrealized_pnl"] * base_cap
+
+                price_fmt = (
+                    lambda p: f"{int(round(p)):,}원"
+                    if currency == "원"
+                    else f"${p:.2f}"
+                )
+                cash_fmt = (
+                    lambda c: f"{int(round(c)):+,}원"
+                    if currency == "원"
+                    else f"${c:+,.2f}"
+                )
+
+                holding_rows.append({
+                    "종목명": d["asset_name"],
+                    "진입 시점": holding["entry_time"],
+                    "보유 비중": "100% (2차)" if holding["holding_units"] == 1.0 else "50% (1차)",
+                    "평단가": price_fmt(holding["avg_price"]),
+                    "현재가": price_fmt(holding["current_price"]),
+                    "평가 수익률": f"{holding['unrealized_pnl'] * 100:+.2f}%",
+                    "평가 손익금": cash_fmt(unrealized_cash),
+                    "보유 시간": f"{holding['holding_bars']}시간 경과",
+                    "_sort_pnl": holding["unrealized_pnl"],
+                })
+
+        num_holdings = len(holding_rows)
+        with st.expander(f"💼 현재 보유 중인 종목 ({num_holdings}개 진행 중)", expanded=(num_holdings > 0)):
+            if num_holdings > 0:
+                df_holding = pd.DataFrame(holding_rows).sort_values(by="_sort_pnl", ascending=False)
+                show_cols = ["종목명", "진입 시점", "보유 비중", "평단가", "현재가", "평가 수익률", "평가 손익금", "보유 시간"]
+                st.dataframe(df_holding[show_cols], use_container_width=True, hide_index=True)
+            else:
+                st.info("💡 현재 진입 중인(보유 중인) 종목이 없어. (전 유니버스 현금 100% 대기 관망 중)")
+
+        st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
+
+        # ======================================================================
+        # 2. 🎯 당일 청산 완료(체결 확정) 실적
+        # ======================================================================
         today_data = []
         all_today_trades = []
+        tot_krw_cash = 0.0
+        tot_usd_cash = 0.0
 
         for d in full_ranked:
-            # 종목명 / 티커 키 가져오기 (데이터 필드에 맞게 fallback 처리)
-            # [추천] d.get("asset_name")을 최우선으로 탐색
             asset_name = d.get("asset_name", d.get("name", d.get("symbol", "알 수 없음")))
+            currency = d.get("target_info", {}).get("currency", "원")
+            curr_price = float(d.get("current_price", 0.0))
             
-            # 당일 체결 수익률 리스트 (단일 수치 또는 리스트 대응)
             t_trades = d.get("today_trades", d.get("today_returns", []))
             if isinstance(t_trades, (int, float)):
                 t_trades = [t_trades]
@@ -1569,49 +1636,58 @@ with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 &
                 t_trades_arr = np.array(t_trades, dtype=float)
                 cnt = len(t_trades_arr)
                 avg_ret = float(np.mean(t_trades_arr))
-                tot_ret = float(np.sum(t_trades_arr))
                 win_cnt = int(np.sum(t_trades_arr > 0))
+
+                base_capital = 10_000_000.0 if currency == "원" else 10_000.0
+                trade_cash_list = t_trades_arr * base_capital
+                tot_cash = float(np.sum(trade_cash_list))
+
+                if currency == "원":
+                    tot_krw_cash += tot_cash
+                    tot_cash_str = f"{int(round(tot_cash)):+,}원"
+                else:
+                    tot_usd_cash += tot_cash
+                    tot_cash_str = f"${tot_cash:+,.2f}"
 
                 today_data.append({
                     "종목명": asset_name,
                     "체결 횟수": f"{cnt}회",
                     "승률": f"{(win_cnt / cnt) * 100:.1f}%",
                     "건당 평균 수익률": f"{avg_ret * 100:+.2f}%",
-                    "오늘자 합산 수익률": f"{tot_ret * 100:+.2f}%",
-                    "_sort_tot": tot_ret,
+                    "오늘자 합산 수익금": tot_cash_str,
+                    "_sort_tot": tot_cash,
                     "_cnt": cnt
                 })
 
         if len(today_data) > 0:
-            # 전체 통합 집계
             all_today_arr = np.array(all_today_trades, dtype=float)
             total_today_count = len(all_today_arr)
             total_assets_count = len(today_data)
             avg_per_trade = float(np.mean(all_today_arr))
-            today_total_pnl = float(np.sum(all_today_arr))
             today_win_rate = float(np.mean(all_today_arr > 0) * 100.0)
 
-            # 상단 핵심 메트릭 4종
+            if tot_krw_cash != 0 and tot_usd_cash != 0:
+                total_cash_display = f"{int(round(tot_krw_cash)):+,}원 / ${tot_usd_cash:+,.2f}"
+            elif tot_krw_cash != 0:
+                total_cash_display = f"{int(round(tot_krw_cash)):+,}원"
+            else:
+                total_cash_display = f"${tot_usd_cash:+,.2f}"
+
             t1, t2, t3, t4 = st.columns(4)
-            t1.metric("오늘 체결 종목", f"{total_assets_count}개 종목", delta=f"총 {total_today_count}회 체결")
+            t1.metric("오늘 청산 종목", f"{total_assets_count}개 종목", delta=f"총 {total_today_count}회 청산")
             t2.metric("당일 건당 평균 수익률", f"{avg_per_trade * 100:+.2f}%", delta=f"당일 승률 {today_win_rate:.1f}%")
             t3.metric(
-                "오늘자 총 합산 수익률", 
-                f"{today_total_pnl * 100:+.2f}%",
-                delta="수익 마감" if today_total_pnl >= 0 else "손실 방어 중",
-                delta_color="normal" if today_total_pnl >= 0 else "inverse"
+                "오늘자 실현 손익금", 
+                total_cash_display,
+                delta="수익 마감" if (tot_krw_cash + tot_usd_cash) >= 0 else "손실 방어 중",
+                delta_color="normal" if (tot_krw_cash + tot_usd_cash) >= 0 else "inverse"
             )
-            t4.metric("최다 체결 종목", max(today_data, key=lambda x: x["_cnt"])["종목명"])
+            t4.metric("최다 청산 종목", max(today_data, key=lambda x: x["_cnt"])["종목명"])
 
-            st.markdown("##### 📋 종목별 실시간 체결 상세")
-            
-            # DataFrame 생성 및 정렬 (합산 수익률 기준 내림차순)
-            import pandas as pd
             df_today = pd.DataFrame(today_data).sort_values(by="_sort_tot", ascending=False)
-            display_cols = ["종목명", "체결 횟수", "승률", "건당 평균 수익률", "오늘자 합산 수익률"]
+            display_cols = ["종목명", "체결 횟수", "승률", "건당 평균 수익률", "오늘자 합산 수익금"]
 
-            # [수정] 접었다 펼 수 있는 expander로 변경
-            with st.expander(f"📋 종목별 실시간 체결 상세 보기 ({total_assets_count}개 종목)", expanded=False):
+            with st.expander(f"📋 오늘 체결 완료 상세 보기 ({total_assets_count}개 종목)", expanded=False):
                 st.dataframe(
                     df_today[display_cols],
                     use_container_width=True,
