@@ -1106,7 +1106,7 @@ def process_single_asset(asset_name, target_info, cached_data=None, market_is_op
                     dip_rate = max(0.950, 1.0 - 2.5 * avg_sigma)    # 2.5σ 눌림 시 2차 매수
                     escape_target_pnl = max(0.004, 1.5 * avg_sigma)  # 1.5σ 달성 시 약익절 목표
                     hard_stop_rate = min(-0.040, -3.5 * avg_sigma)   # 3.5σ 손실 시 하드 손절
-                    max_holding_bars = 48     # 우량주는 무거우므로 반등까지 충분한 시간(약 7~8일)을 줌
+                    max_holding_bars = 24     # 우량주는 무거우므로 반등까지 충분한 시간(약 7~8일)을 줌
                     min_band_spread = 0.015
                     macro_allow_cap = 65.0
 
