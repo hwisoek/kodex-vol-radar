@@ -1076,6 +1076,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
         time_over_count = 0
         trade_log = []
         today_trades = []
+        current_holding = None   # ← 추가
 
         try:
             h_data = fetch_recent_1h_candles(symbol)
@@ -1234,7 +1235,7 @@ def process_single_asset(asset_name, target_info, cached_data=None):
 
                         # 청산 조건 분기
                         is_trend_exit = has_taken_tp1 and (curr_p < mid_line[i])
-                        is_escape_exit = (holding_units == 1.0 and not has_taken_tp1) and (
+                        is_escape_exit = (not has_taken_tp1) and (
                             current_pnl >= escape_target_pnl or curr_p >= mid_line[i]
                         )
                         is_spike = curr_sigma >= rv_threshold
@@ -1372,7 +1373,7 @@ with st.spinner(scan_msg):
                 cached_item = st.session_state["closed_asset_cache"][name]
 
             # 워커에 안전한 값 전달
-            futures[executor.submit(process_single_asset, name, info, cached_item)] = name
+            futures[executor.submit(process_single_asset, name, info, cached_item, market_is_open)] = name
 
         for f in as_completed(futures):
             res = f.result()
