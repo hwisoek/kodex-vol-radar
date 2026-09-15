@@ -983,7 +983,7 @@ def get_asset_leverage_config(asset_name: str):
             "macro_allow_cap": 65.0,
         }
 
-def process_single_asset(asset_name, target_info, cached_data=None):
+def process_single_asset(asset_name, target_info, cached_data=None, market_is_open=True):
     is_open, time_display_str, hours_desc = get_single_market_status_text(
         target_info["tz"], target_info["is_kr"]
     )
