@@ -1105,7 +1105,7 @@ def process_single_asset(asset_name, target_info, cached_data=None, market_is_op
                 else:
                     dip_rate = 0.975          # 🎯 -1.0% -> -2.5% 눌림 시 2차 매수 (1배수 핵심 수정)
                     escape_target_pnl = 0.005
-                    max_holding_bars = 24     # 우량주 기본값 롤백
+                    max_holding_bars = 36     # 우량주 기본값 롤백
                     min_band_spread = 0.015
                     macro_allow_cap = 65.0
                     hard_stop_rate = -0.065
