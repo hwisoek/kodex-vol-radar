@@ -1678,7 +1678,7 @@ with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 &
 
             # 기준선 (초기자본 = 1.0)
             fig_equity.add_hline(
-                y=1.0,
+                y=0.85,
                 line=dict(color="#94a3b8", width=1, dash="dot"),
                 annotation_text="기준선 (초기자본 100%)",
                 annotation_position="bottom right",
