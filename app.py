@@ -1692,7 +1692,7 @@ with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 &
                 mode="lines",
                 name="포트폴리오 가치 (Vₜ)",
                 line=dict(color="#0ea5e9", width=2.2),
-                fill="tozeroy",
+                fill="tonexty",
                 fillcolor="rgba(14,165,233,0.08)",
                 hovertemplate="시점: %{x}<br>Vₜ = %{y:.4f} (%{customdata:+.2f}%)<extra></extra>",
                 customdata=[(v - 1.0) * 100 for v in equity_curve],
