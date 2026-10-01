@@ -1678,7 +1678,7 @@ with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 &
 
             # 기준선 (초기자본 = 1.0)
             fig_equity.add_hline(
-                y=0.85,
+                y=1.0,
                 line=dict(color="#94a3b8", width=1, dash="dot"),
                 annotation_text="기준선 (초기자본 100%)",
                 annotation_position="bottom right",
@@ -1692,11 +1692,20 @@ with st.expander("🔬 [통계 및 실전 검증] FPCA 변동성 예측 모형 &
                 mode="lines",
                 name="포트폴리오 가치 (Vₜ)",
                 line=dict(color="#0ea5e9", width=2.2),
-                fill="tonexty",
+                fill="tozeroy",
                 fillcolor="rgba(14,165,233,0.08)",
                 hovertemplate="시점: %{x}<br>Vₜ = %{y:.4f} (%{customdata:+.2f}%)<extra></extra>",
                 customdata=[(v - 1.0) * 100 for v in equity_curve],
             ))
+            #---------------------------------------------
+            #Y축 범위 설정
+            #---------------------------------------------
+            y_min = min(0.85, min(equity_curve) - 0.01)
+            y_max = max(equity_curve) + 0.01
+
+            fig_equity.update_yaxes(
+                range=[y_min, y_max]
+            )
 
             fig_equity.update_layout(
                 title=dict(
